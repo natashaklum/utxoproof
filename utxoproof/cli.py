@@ -602,6 +602,7 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--entities", default=None, help="Entities TOML (overview section)")
     report.add_argument("--wallet", default="utxoproof_watchonly", help="Synced wallet")
     report.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (funding labels)")
+    report.add_argument("--trades", default=None, help="Kraken trades.csv join for ledgers")
     setup = sub.add_parser("setup", help="Create watch-only wallet, import xpubs")
     setup.add_argument("--rpc-url", default="http://127.0.0.1:8332")
     setup.add_argument("--rpc-user", default="")
@@ -612,6 +613,11 @@ def build_parser() -> argparse.ArgumentParser:
     setup.add_argument("--purpose", type=int, default=84)
     setup.add_argument("--coin", type=int, default=0)
     setup.add_argument("--account", type=int, default=0)
+    setup.add_argument(
+        "--timestamp",
+        default="now",
+        help="Descriptor import time: 'now' (no rescan) or unix time / 0 to rescan",
+    )
     sync = sub.add_parser("sync", help="Pull new on-chain transactions into SQLite")
     sync.add_argument("--rpc-url", default="http://127.0.0.1:8332")
     sync.add_argument("--rpc-user", default="")
@@ -647,11 +653,13 @@ def build_parser() -> argparse.ArgumentParser:
     prov.add_argument("--out", default=None, help="Output directory")
     prov.add_argument("--evidence-dir", default=None, help="Evidence root")
     prov.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (funding labels)")
+    prov.add_argument("--trades", default=None, help="Kraken trades.csv join for ledgers")
     port = sub.add_parser("portfolio", help="Entity overview from synced UTXOs")
     port.add_argument("--db", default=None, help="SQLite DB (<data-dir>/utxoproof.db)")
     port.add_argument("--entities", required=True, help="Entities TOML file")
     port.add_argument("--wallet", default="utxoproof_watchonly", help="Synced wallet")
     port.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (funding labels)")
+    port.add_argument("--trades", default=None, help="Kraken trades.csv join for ledgers")
     port.add_argument("--price", type=Decimal, default=None, help="BTC/EUR price override")
     port.add_argument("--as-of", default=None, help="As-of date YYYY-MM-DD (default: today)")
     port.add_argument("--out", default=None, help="Output directory for overview.html + entities/")
@@ -713,7 +721,12 @@ def _write_full_from_args(args: argparse.Namespace, communal: Decimal, config: C
     if getattr(args, "ledgers", None):
         from utxoproof.linking import funding_from_ledgers
 
-        funding_matches = funding_from_ledgers(args.ledgers, db).matches
+        try:
+            funding_matches = funding_from_ledgers(
+                args.ledgers, db, trades_path=args.trades
+            ).matches
+        except ValueError as exc:
+            print(f"funding labels skipped: {exc}")
     return write_full_report(
         db=db,
         csv_path=args.input,
@@ -759,8 +772,10 @@ def _run_setup(args: argparse.Namespace) -> int:
     descriptors = build_descriptors(
         args.xpub, args.fingerprint, args.purpose, args.coin, args.account
     )
+    raw_timestamp = getattr(args, "timestamp", "now")
+    timestamp = int(raw_timestamp) if str(raw_timestamp).isdigit() else raw_timestamp
     for kind, desc in descriptors.items():
-        importer.import_descriptor(args.wallet, desc, "now")
+        importer.import_descriptor(args.wallet, desc, timestamp)
         print(f"imported {kind}: {desc}")
     return 0
 
@@ -869,7 +884,7 @@ def _run_privacy(args: argparse.Namespace) -> int:
 
 
 def _run_portfolio(args: argparse.Namespace) -> int:
-    from utxoproof.linking import funding_from_ledgers
+    from utxoproof.linking import FundingResult, funding_from_ledgers
     from utxoproof.portfolio import (
         load_entities,
         load_price_series,
@@ -906,7 +921,11 @@ def _run_portfolio(args: argparse.Namespace) -> int:
         curve = oracle.get_btc_eur
         note = "daily close per acquisition date"
         price = oracle.get_btc_eur(as_of)
-    funding = funding_from_ledgers(args.ledgers, db)
+    funding = FundingResult(matches={})
+    try:
+        funding = funding_from_ledgers(args.ledgers, db, trades_path=args.trades)
+    except ValueError as exc:
+        print(f"funding labels skipped: {exc}")
     for line in funding.ambiguous:
         print(f"ambiguous funding: {line} — left unlabeled")
     for line in funding.unmatched:
@@ -985,9 +1004,13 @@ def _run_provenance(args: argparse.Namespace) -> int:
         print(f"note: chain truncated at depth cap {args.depth} — earliest history not shown")
     print(f"price_note: {note}")
     if args.out:
-        from utxoproof.linking import funding_from_ledgers
+        from utxoproof.linking import FundingResult, funding_from_ledgers
 
-        funding = funding_from_ledgers(args.ledgers, db)
+        funding = FundingResult(matches={})
+        try:
+            funding = funding_from_ledgers(args.ledgers, db, trades_path=args.trades)
+        except ValueError as exc:
+            print(f"funding labels skipped: {exc}")
         target = write_provenance_page(
             db,
             txid,

@@ -49,7 +49,9 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
 - Chain crypto (xpub parsing, address derivation) goes through `utxoproof/descriptors.py`
   (embit); new vectors must be spec vectors, hand-verified before pinning.
 - Bitcoin Core access goes through `utxoproof/bitcoin_rpc.py` (httpx JSON-RPC) and
-  `utxoproof/onchain.py` (tx-graph sync). Daemon-backed tests are marked
+  `utxoproof/onchain.py` (tx-graph sync). `setup --timestamp` defaults to `now`
+  (no rescan); `RESCAN_FROM=0` in `run.sh` rescans history for funded wallets.
+  Daemon-backed tests are marked
   `regtest` and skip without a node; CI `regtest` job starts one via docker.
 - KYC lives in `utxoproof/kyc.py` (proportional propagation, mixing detection);
   `utxoproof privacy` renders it. Shared sample graph: `create_sample_graph()`.

@@ -153,9 +153,18 @@ That writes `overview/overview.html`, `entities/<id>.html`, and
 UTXO links resolve. Pass `--ledgers ledgers.csv` (also wired in `run.sh` via
 `KRAKEN_LEDGERS`) to label each chain receipt with the Kraken withdrawal that
 funded it — amount + date matched, ambiguous or unmatched withdrawals reported
-and left unlabeled, never guessed. `report --full --entities entities.toml`
-folds the overview into the full report the same way. Provenance pages state
-when the chain hit the depth cap instead of silently truncating.
+and left unlabeled, never guessed. Ledgers with margin legs need the same
+`--trades trades.csv` join as `import` for funding labels; without it the
+labels are skipped with a warning while the overview still builds.
+`report --full --entities entities.toml` folds the overview into the full
+report the same way. Provenance pages state when the chain hit the depth cap
+instead of silently truncating.
+
+Zero on-chain balance with the wallet present almost always means descriptors
+were imported with timestamp `now` (no historical rescan): check
+`listdescriptors` for the two `wpkh` entries, then either `rescanblockchain`
+manually or set `RESCAN_FROM=0` (unix time also accepted) in `run.sh` before
+`setup` — the default `now` keeps first setups fast.
 
 ## 3. Configuration (`utxoproof.toml`)
 

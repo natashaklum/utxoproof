@@ -34,12 +34,18 @@ class FundingResult:
     unmatched: list[str] = field(default_factory=list)  # refids, human-readable
 
 
-def kraken_btc_withdrawals(ledgers_path: str | Path) -> list[Withdrawal]:
-    """BTC withdrawal legs from a Kraken ``ledgers.csv`` export."""
+def kraken_btc_withdrawals(
+    ledgers_path: str | Path, trades_path: str | Path | None = None
+) -> list[Withdrawal]:
+    """BTC withdrawal legs from a Kraken ``ledgers.csv`` export.
+
+    ``trades_path`` is the same join ``import --trades`` takes: without it,
+    margin-disposal legs that need execution prices raise instead of parsing.
+    """
     from utxoproof.kraken_csv import parse_kraken_ledgers
 
     out = []
-    for tx in parse_kraken_ledgers(Path(ledgers_path)):
+    for tx in parse_kraken_ledgers(Path(ledgers_path), trades_path):
         if tx.kind == "WITHDRAWAL" and tx.btc > 0:
             out.append(
                 Withdrawal(
@@ -99,8 +105,16 @@ def funding_from_ledgers(
     ledgers_path: str | Path | None,
     db: sqlite3.Connection,
     window_days: int = 3,
+    trades_path: str | Path | None = None,
 ) -> FundingResult:
-    """Convenience: parse ledgers + match against ``db`` (empty result when no path)."""
+    """Convenience: parse ledgers + match against ``db`` (empty result when no path).
+
+    Raises the ledger parse error (e.g. margin leg without price and without
+    ``trades_path``) instead of guessing — callers that treat funding as
+    annotation-only catch it and continue unlabeled.
+    """
     if not ledgers_path:
         return FundingResult(matches={})
-    return match_funding(kraken_btc_withdrawals(ledgers_path), chain_receives(db), window_days)
+    return match_funding(
+        kraken_btc_withdrawals(ledgers_path, trades_path), chain_receives(db), window_days
+    )

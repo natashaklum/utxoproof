@@ -39,6 +39,7 @@ set -euo pipefail
 : "${ENTITIES_FILE:=}"            # path to entities TOML; empty skips portfolio
 : "${MODE:=prepare}"             # prepare | refresh
 : "${DEBUG:=}"                    # non-empty prints each on-chain command (password redacted)
+: "${RESCAN_FROM:=now}"           # setup rescan: 'now' (fast) or unix time / 0 for full
 
 UTXOPROOF_BIN="${UTXOPROOF_BIN:-utxoproof}"
 
@@ -100,7 +101,8 @@ stage_setup() {
             --rpc-password "$RPC_PASSWORD" \
             --xpub "$XPUB" --fingerprint "$FINGERPRINT" \
             --wallet "$WALLET" \
-            --purpose "$PURPOSE" --coin "$COIN" --account "$ACCOUNT" 2>&1) || {
+            --purpose "$PURPOSE" --coin "$COIN" --account "$ACCOUNT" \
+            --timestamp "$RESCAN_FROM" 2>&1) || {
             log "warning: setup skipped (node unreachable or RPC error)"
             printf '%s\n' "$setup_out"
         }
@@ -139,6 +141,7 @@ stage_portfolio() {
                 --entities "$ENTITIES_FILE" --wallet "$WALLET" \
                 --price "${BTC_PRICE:-40000}" \
                 ${KRAKEN_LEDGERS:+--ledgers "$KRAKEN_LEDGERS"} \
+                ${KRAKEN_TRADES:+--trades "$KRAKEN_TRADES"} \
                 --out "$DATA_DIR/portfolio" 2>&1) || {
                 log "warning: portfolio build skipped (entity config or DB issue)"
                 printf '%s\n' "$port_out"

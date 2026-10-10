@@ -116,3 +116,72 @@ def test_funding_from_ledgers_empty_without_path() -> None:
     from utxoproof.kyc import create_sample_graph
 
     assert funding_from_ledgers(None, create_sample_graph()) == FundingResult(matches={})
+
+
+def _margin_only_ledgers(path) -> None:
+    path.write_text(
+        "txid,refid,time,type,subtype,aclass,subclass,asset,wallet,amount,fee,balance\n"
+        "L1,Q9,2023-01-01 00:00:00,margin,,currency,crypto,XXBT,spot / main,"
+        "-0.5,0.0,0.0\n",
+        encoding="utf-8",
+    )
+
+
+def test_portfolio_survives_unpriceable_ledgers_without_trades(tmp_path, capsys) -> None:
+    """Funding is annotation-only: margin legs needing --trades must not abort the overview."""
+    import shutil
+    import sqlite3
+
+    from utxoproof.cli import main
+    from utxoproof.kyc import create_sample_graph
+
+    ledgers = tmp_path / "ledgers.csv"
+    _margin_only_ledgers(ledgers)
+    db_path = tmp_path / "t.db"
+    dest = sqlite3.connect(str(db_path))
+    create_sample_graph().backup(dest)
+    dest.close()
+    shutil.copy(
+        __import__("pathlib").Path(__file__).resolve().parent.parent
+        / "examples"
+        / "entities.example.toml",
+        tmp_path / "entities.toml",
+    )
+    out = tmp_path / "site"
+    assert (
+        main(
+            [
+                "portfolio",
+                "--db",
+                str(db_path),
+                "--entities",
+                str(tmp_path / "entities.toml"),
+                "--price",
+                "40000",
+                "--as-of",
+                "2024-06-01",
+                "--ledgers",
+                str(ledgers),
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    assert (out / "overview" / "overview.html").is_file()
+    assert "funding labels skipped" in capsys.readouterr().out
+
+
+def test_setup_accepts_timestamp_flag() -> None:
+    from utxoproof.cli import build_parser
+
+    args = build_parser().parse_args(
+        ["setup", "--xpub", "xpub661", "--fingerprint", "aabbccdd", "--timestamp", "0"]
+    )
+    assert args.timestamp == "0"
+    assert (
+        build_parser()
+        .parse_args(["setup", "--xpub", "xpub661", "--fingerprint", "aabbccdd"])
+        .timestamp
+        == "now"
+    )
