@@ -207,3 +207,37 @@ def test_portfolio_cli_writes_overview_and_entities(tmp_path: Path) -> None:
     )
     assert (out / "overview" / "overview.html").is_file()
     assert (out / "entities" / "ledger-savings.html").is_file()
+
+
+def test_address_column_flows_to_entity_pages(tmp_path: Path) -> None:
+    import datetime
+    from decimal import Decimal
+
+    from utxoproof.advisory import analyze_wallet
+    from utxoproof.kyc import create_sample_graph
+    from utxoproof.portfolio import Entity, portfolio_from_db
+    from utxoproof.reports import write_entity_pages
+
+    db = create_sample_graph()
+    addr = "bcrt1qtestaddress000000000000000000000000"
+    db.execute("UPDATE tx_outputs SET address = ? WHERE txid = 'D'", (addr,))
+    db.commit()
+    advisories = analyze_wallet(
+        db, lambda _d: Decimal("20000"), Decimal("40000"), datetime.date(2024, 6, 1)
+    )
+    assert any(a.address == addr for a in advisories)
+    portfolio, _ = portfolio_from_db(
+        db,
+        [Entity("cold", "wallet", "Cold", "", wallet="w")],
+        [],
+        "w",
+        lambda _d: Decimal("20000"),
+        Decimal("40000"),
+        datetime.date(2024, 6, 1),
+    )
+    assert any(u.address == addr for u in portfolio.utxos)
+    targets = write_entity_pages(portfolio, "../provenance", tmp_path)
+    html = targets[0].read_text(encoding="utf-8")
+    assert "<th>Address</th>" in html
+    assert addr in html
+    assert "—" in html  # outputs without a recorded address fall back gracefully

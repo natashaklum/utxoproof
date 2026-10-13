@@ -39,6 +39,7 @@ class UtxoHolding:
     eur_value: Decimal
     kyc_status: str
     cost_eur: Decimal = Decimal("0")
+    address: str = ""
 
 
 @dataclass
@@ -329,6 +330,7 @@ def portfolio_from_db(
             a.current_value_eur,
             a.kyc_status,
             a.acquisition_cost_eur,
+            a.address,
         )
         for a in advisories
     ]

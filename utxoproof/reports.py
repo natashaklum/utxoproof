@@ -421,6 +421,7 @@ def build_advisory_context(
         "advisories": [
             {
                 "utxo": f"{a.txid}:{a.vout}",
+                "address": a.address or "—",
                 "btc": f"{a.amount_btc:.8f}",
                 "holding_days": a.holding_days,
                 "cost_eur": f"{a.acquisition_cost_eur:.2f}",
@@ -779,6 +780,7 @@ def build_entity_context(
             {
                 "id": f"{u.txid}:{u.vout}",
                 "href": f"{provenance_rel}/provenance_{u.txid}_{u.vout}.html",
+                "address": u.address or "—",
                 "btc": f"{u.btc:.8f}",
                 "value": f"{u.eur_value:,.2f}",
                 "kyc": u.kyc_status,

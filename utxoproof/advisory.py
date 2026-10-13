@@ -50,6 +50,7 @@ class UTXOAdvisory:
     kyc_status: str
     kyc_fraction: Decimal
     speculation_tainted: bool = False
+    address: str = ""
     flags: list[AdvisoryFlag] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
@@ -119,6 +120,7 @@ def analyze_utxo(
     kyc_fraction: Decimal,
     as_of: datetime.date,
     speculation_tainted: bool = False,
+    address: str = "",
 ) -> UTXOAdvisory:
     """Build a fully flagged advisory for one UTXO."""
     holding_days = (as_of - acquisition_date).days if acquisition_date else 0
@@ -138,6 +140,7 @@ def analyze_utxo(
         kyc_status=kyc_status,
         kyc_fraction=kyc_fraction,
         speculation_tainted=speculation_tainted,
+        address=address,
     )
     advisory.flags = assign_flags(advisory)
     return advisory
@@ -152,11 +155,11 @@ def analyze_wallet(
     """Analyze every unspent output. ``price_at`` maps acquisition date->EUR/BTC."""
     advisories = []
     rows = db.execute(
-        "SELECT o.txid, o.vout, o.value_sat, o.kyc_status, o.kyc_fraction, t.block_time "
-        "FROM tx_outputs o JOIN transactions t ON t.txid=o.txid "
+        "SELECT o.txid, o.vout, o.value_sat, o.kyc_status, o.kyc_fraction, t.block_time, "
+        "o.address FROM tx_outputs o JOIN transactions t ON t.txid=o.txid "
         "WHERE o.spent_by_txid IS NULL AND o.is_mine = 1"
     ).fetchall()
-    for txid, vout, value_sat, kyc_status, kyc_fraction, block_time in rows:
+    for txid, vout, value_sat, kyc_status, kyc_fraction, block_time, address in rows:
         amount_btc = Decimal(value_sat) / Decimal(100_000_000)
         acquired = datetime.date.fromisoformat(block_time[:10])
         cost = amount_btc * price_at(acquired)
@@ -171,6 +174,7 @@ def analyze_wallet(
                 kyc_status,
                 Decimal(kyc_fraction),
                 as_of,
+                address=address or "",
             )
         )
     advisories.sort(key=lambda a: a.tax_if_sold_eur, reverse=True)
