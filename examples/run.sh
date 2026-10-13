@@ -24,6 +24,8 @@ set -euo pipefail
 : "${DATA_DIR:=$HOME/utxoproof-data}"
 : "${KRAKEN_LEDGERS:=$HOME/exports/kraken_ledgers.csv}"
 : "${KRAKEN_TRADES:=}"            # empty skips trades join
+: "${BANK_CSV:=}"                 # e.g. "$HOME/exports/kbc.csv"; empty skips bank review
+: "${BANK_TYPE:=kbc}"             # ing | kbc | bnp | belfius | argenta
 : "${TAX_YEAR:=$(date +%Y)}"
 : "${BTC_PRICE:=}"                # empty = oracle yesterday-close for status
 : "${CONFIG_FILE:=}"              # e.g. "$DATA_DIR/utxoproof.toml"
@@ -69,6 +71,20 @@ stage_import() {
             --out "$DATA_DIR/manual.csv"
     fi
     log "import done: $DATA_DIR/manual.csv"
+}
+
+# ---------------------------------------------------------------------------
+# Stage: bank statement -> review rows (evidence + corroboration, never pool input)
+# ---------------------------------------------------------------------------
+stage_bank() {
+    log "bank: statement -> review rows"
+    if [ -n "$BANK_CSV" ]; then
+        [ -f "$BANK_CSV" ] || fail "bank statement not found: $BANK_CSV"
+        "$UTXOPROOF_BIN" import --file "$BANK_CSV" --type "$BANK_TYPE" \
+            --out "$DATA_DIR/bank-rows.csv"
+    else
+        log "note: bank review skipped (set BANK_CSV to enable)"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -172,11 +188,13 @@ stage_report() {
         "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --year "$TAX_YEAR" \
             --config "$CONFIG_FILE" --source "$KRAKEN_LEDGERS" \
             ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
+            ${BANK_CSV:+--source "$BANK_CSV"} \
             --out "$DATA_DIR/$TAX_YEAR"
     else
         "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --year "$TAX_YEAR" \
             --source "$KRAKEN_LEDGERS" \
             ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
+            ${BANK_CSV:+--source "$BANK_CSV"} \
             --out "$DATA_DIR/$TAX_YEAR"
     fi
 }
@@ -210,6 +228,7 @@ case "$MODE" in
     prepare)
         log "mode: prepare (halts if check reports shortfalls)"
         stage_import
+        stage_bank
         shortfalls=$(stage_check)
         case "$shortfalls" in
             "shortfalls: 0") log "no shortfalls — proceeding" ;;
@@ -231,6 +250,7 @@ case "$MODE" in
     refresh)
         log "mode: refresh (idempotent rerun; shortfalls print but do not stop)"
         stage_import
+        stage_bank
         stage_check || true   # always prints; never aborts
         stage_compute
         stage_setup

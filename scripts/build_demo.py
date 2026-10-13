@@ -133,6 +133,22 @@ def main() -> int:
         rel = target.relative_to(out)
         links.append(f'<li><a href="{rel}">{demo.title}</a></li>')
 
+    # Bank review demo: KBC statement rows parsed for real, matched against the
+    # demo Kraken trades. The kbc-checking entity below carries the statement
+    # inflow total, labeled as such — a checking balance cannot be derived from
+    # a partial statement (no opening balance), so real setups hand-assert it.
+    from utxoproof.banks import parse_bank_csv
+    from utxoproof.matching import match_fiat_legs
+    from utxoproof.reports import write_bank_page
+
+    kraken_demo_txs = parse_kraken_ledgers(ROOT / "tests" / "fixtures" / "kraken_ledgers_2023.csv")
+    kbc_rows = parse_bank_csv(ROOT / "tests" / "fixtures" / "kbc_2023.csv", "kbc")
+    kbc_matches, kbc_unmatched = match_fiat_legs(kraken_demo_txs, kbc_rows)
+    write_bank_page(
+        "kbc", kbc_rows, kbc_matches, kbc_unmatched, out / "bank", demo_notice=DEMO_NOTICE
+    )
+    links.append('<li><a href="bank/bank.html">Bank review (KBC statement)</a></li>')
+
     write_descriptors_page(out / "descriptors", demo_notice=DEMO_NOTICE)
     links.append(
         '<li><a href="descriptors/descriptors.html">Descriptor check (BIP84 vectors)</a></li>'
@@ -284,6 +300,13 @@ def main() -> int:
             Entity("ledger-savings", "wallet", "Ledger Nano — savings", "BIP84 account"),
             Entity("phone-spending", "wallet", "Phone spending", "Small hot wallet"),
             Entity("ing-savings", "bank", "ING savings", "BE68 **** 7034"),
+            Entity(
+                "kbc-checking",
+                "bank",
+                "KBC checking",
+                f"statement {kbc_rows[0].date.isoformat()}-{kbc_rows[-1].date.isoformat()}, "
+                f"{len(kbc_rows)} rows parsed from kbc_2023.csv",
+            ),
             Entity("kraken-eur", "exchange", "Kraken EUR balance", "Uninvested euros"),
         ],
         utxos=[
@@ -300,6 +323,11 @@ def main() -> int:
         ],
         fiat=[
             FiatHolding("ing-savings", Decimal("12500"), "Savings buffer"),
+            FiatHolding(
+                "kbc-checking",
+                sum((r.amount_eur for r in kbc_rows), Decimal("0")),
+                "Statement inflow total — not a balance (see bank review)",
+            ),
             FiatHolding("kraken-eur", Decimal("3200"), "Dry powder"),
         ],
         current_price_eur=Decimal("40000"),

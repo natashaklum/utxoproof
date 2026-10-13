@@ -4,10 +4,21 @@
 #
 #   cp examples/entities.example.toml ~/utxoproof-data/entities.toml
 #
+# What belongs here (and only here): human assertions the pipeline cannot
+# derive — which wallet is savings vs spending, and euro balances with an
+# as-of date in the note. What does NOT belong: secrets (no xpubs, keys or
+# passwords — nothing reads secrets from this file), auto-derived balances
+# from partial statements (a statement has no opening balance, so any amount
+# without a human as-of note is a guess), or anything the tool computes
+# itself (cost basis, gains, UTXO values).
+#
 # UTXO assignment: unspent outputs from the synced on-chain DB land in the
 # entity whose `wallet` matches the synced wallet name (default
 # `utxoproof_watchonly`, the same default as `setup`/`sync --wallet`). With a
 # single [[entities]] entry everything lands there regardless of `wallet`.
+#
+# Validation: unknown entity_id in [[fiat]] aborts; `utxoproof portfolio`
+# prints the resulting allocation so misassignment is visible immediately.
 
 [[entities]]
 id = "ledger-savings"
@@ -28,13 +39,28 @@ kind = "exchange"
 label = "Kraken EUR balance"
 detail = "Uninvested euros"
 
-# Static euro balances (no chain data needed).
+# Static euro balances (no chain data needed). Assert them yourself from the
+# account on the noted date — never computed from a partial statement.
 [[fiat]]
 entity_id = "ing-savings"
 amount_eur = "12500"
-note = "Savings buffer"
+note = "ING app balance, 2024-06-01"
 
 [[fiat]]
 entity_id = "kraken-eur"
 amount_eur = "3200"
 note = "Dry powder"
+
+# Your turn: a KBC checking account looks like this (uncomment + fill in).
+# Convert the statement with:
+#   utxoproof import --file ~/kbc-checking.csv --type kbc --out bank-rows.csv
+# then review bank-rows.csv and attach the statement as a report --source.
+# [[entities]]
+# id = "kbc-checking"
+# kind = "bank"
+# label = "KBC checking"
+# detail = "BE12 **** 3456"
+# [[fiat]]
+# entity_id = "kbc-checking"
+# amount_eur = "0"
+# note = "KBC app balance, YYYY-MM-DD"

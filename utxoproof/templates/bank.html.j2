@@ -1,0 +1,39 @@
+{% extends "base.html.j2" %}
+{% block title %}utxoproof bank review ({{ bank }}){% endblock %}
+{% block content %}
+<h1>Bank review — {{ bank }}</h1>
+{% if demo_notice %}<div class="demo-banner">{{ demo_notice }}</div>{% endif %}
+<p>{{ intro }}</p>
+
+<h2>Statement rows</h2>
+<table>
+  <tr><th>Date</th><th>Description</th><th>Amount (EUR)</th><th>Counterparty</th><th>Reference</th></tr>
+  {% for r in rows %}
+  <tr><td>{{ r.date }}</td><td>{{ r.description }}</td><td>{{ r.amount }}</td><td><code>{{ r.counterparty }}</code></td><td>{{ r.reference }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Fiat-leg matches</h2>
+{% if matches %}
+<table>
+  <tr><th>Trade</th><th>Trade fiat (EUR)</th><th>Statement date</th><th>Description</th><th>Amount (EUR)</th></tr>
+  {% for m in matches %}
+  <tr><td>{{ m.trade }}</td><td>{{ m.trade_fiat }}</td><td>{{ m.date }}</td><td>{{ m.description }}</td><td>{{ m.amount }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No statement row matched an exchange trade within the matching window.</p>
+{% endif %}
+
+<h2>Unmatched rows (manual review)</h2>
+{% if unmatched %}
+<table>
+  <tr><th>Date</th><th>Description</th><th>Amount (EUR)</th></tr>
+  {% for r in unmatched %}
+  <tr><td>{{ r.date }}</td><td>{{ r.description }}</td><td>{{ r.amount }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>Every row matched. Nothing to review.</p>
+{% endif %}
+{% endblock %}

@@ -102,3 +102,24 @@ def test_scripts_are_executable() -> None:
     for name in ("run.sh",):
         mode = (REPO / "examples" / name).stat().st_mode
         assert mode & stat.S_IXUSR, name
+
+
+def test_refresh_converts_bank_statement(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    proc = _run(
+        "run.sh",
+        {
+            "DATA_DIR": str(data),
+            "KRAKEN_LEDGERS": str(FIXTURES / "kraken_ledgers_2023.csv"),
+            "KRAKEN_TRADES": "",
+            "BANK_CSV": str(FIXTURES / "kbc_2023.csv"),
+            "BANK_TYPE": "kbc",
+            "TAX_YEAR": "2023",
+            "BTC_PRICE": "40000",
+            "MODE": "refresh",
+        },
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    bank_rows = data / "bank-rows.csv"
+    assert bank_rows.is_file()
+    assert "BINANCE storting" in bank_rows.read_text(encoding="utf-8")

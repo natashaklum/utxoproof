@@ -18,9 +18,11 @@ import jinja2
 
 from utxoproof import __version__
 from utxoproof.advisory import UTXOAdvisory, portfolio_summary
+from utxoproof.banks import BankRow
 from utxoproof.belgian_tax import COMMUNAL_SURCHARGE_DEFAULT, apply_belgian_tax
 from utxoproof.cli import PriceAt, compute_details
 from utxoproof.config import ClassifierConfig
+from utxoproof.exchange import ExchangeTx
 from utxoproof.portfolio import Portfolio
 
 DISCLAIMER = (
@@ -145,6 +147,12 @@ INTROS = {
         "Self-check that this tool derives the same addresses as every other "
         "BIP84 wallet: descriptors and first addresses are recomputed live "
         "from the spec test vector and must match it exactly."
+    ),
+    "bank": (
+        "Bank-statement review: parsed statement rows with fiat-leg matches "
+        "against exchange trades, plus unmatched rows needing manual review. "
+        "Statements corroborate the euro legs of your trades; they never enter "
+        "the cost pool."
     ),
     "alltime": (
         "Realised gains year by year plus what is still sitting in inventory "
@@ -457,6 +465,65 @@ def write_advisory_page(
         .render(
             advisory=build_advisory_context(advisories, current_price_eur, price_note, as_of),
             intro=INTROS["advisory"],
+            disclaimer=DISCLAIMER,
+            demo_notice=demo_notice,
+        ),
+        encoding="utf-8",
+    )
+    return target
+
+
+def write_bank_page(
+    bank: str,
+    rows: list[BankRow],
+    matches: list[tuple[ExchangeTx, BankRow]],
+    unmatched: list[BankRow],
+    out_dir: str | Path,
+    demo_notice: str = "",
+) -> Path:
+    """Render parsed bank-statement rows + fiat-leg match review into ``out_dir``.
+
+    Rows are evidence and corroboration (plan Sec. 11), never pool input:
+    ``matches`` pair exchange trades with statement rows, ``unmatched`` need
+    manual review. All display strings stay autoescaped.
+    """
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    target = out / "bank.html"
+    target.write_text(
+        _env()
+        .get_template("bank.html.j2")
+        .render(
+            bank=bank,
+            rows=[
+                {
+                    "date": r.date.isoformat(),
+                    "description": r.description,
+                    "amount": f"{r.amount_eur:,.2f}",
+                    "counterparty": r.counterparty_iban or "—",
+                    "reference": r.reference or "—",
+                }
+                for r in rows
+            ],
+            matches=[
+                {
+                    "trade": f"{tx.date.isoformat()} {tx.kind} {tx.btc} BTC",
+                    "trade_fiat": f"{tx.fiat_amount:,.2f}",
+                    "date": row.date.isoformat(),
+                    "description": row.description,
+                    "amount": f"{row.amount_eur:,.2f}",
+                }
+                for tx, row in matches
+            ],
+            unmatched=[
+                {
+                    "date": r.date.isoformat(),
+                    "description": r.description,
+                    "amount": f"{r.amount_eur:,.2f}",
+                }
+                for r in unmatched
+            ],
+            intro=INTROS["bank"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
         ),

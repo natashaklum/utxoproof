@@ -221,3 +221,30 @@ def test_cli_full_report(tmp_path: Path) -> None:
     html = (out / "fullreport.html").read_text(encoding="utf-8")
     assert "utxoproof full report 2023" in html
     assert "Consolidation (2 inputs merged)" in html
+
+
+def test_bank_page_renders_rows_matches_and_review(tmp_path: Path) -> None:
+    from utxoproof.banks import parse_bank_csv
+    from utxoproof.exchange import ExchangeTx
+    from utxoproof.reports import write_bank_page
+
+    rows = parse_bank_csv(Path(__file__).parent / "fixtures" / "kbc_2023.csv", "kbc")
+    assert len(rows) == 1
+    tx = ExchangeTx(
+        date=rows[0].date,
+        kind="BUY",
+        btc=Decimal("0.5"),
+        eur_per_btc=Decimal("22000"),
+        fee_eur=Decimal("0"),
+        refid="T1",
+    )
+    target = write_bank_page("kbc", rows, [(tx, rows[0])], [], tmp_path)
+    html = target.read_text(encoding="utf-8")
+    assert "BINANCE storting" in html
+    assert "11,000.00" in html
+    assert "BUY 0.5 BTC" in html
+    assert "Nothing to review." in html
+
+    target = write_bank_page("kbc", rows, [], rows, tmp_path)
+    html = target.read_text(encoding="utf-8")
+    assert "manual review" in html.lower() or "Manual review" in html

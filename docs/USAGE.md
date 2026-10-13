@@ -151,6 +151,32 @@ utxoproof portfolio --db <data-dir>/utxoproof.db --entities entities.toml \
   --price 40000 --out <data-dir>/portfolio
 ```
 
+### The entities file: what it is, why you need it, what goes in it
+
+The chain knows your BTC; nothing in the pipeline knows your euros or what
+each wallet *is*. The entities file is the one place where **you** assert
+off-chain truth, and the overview is rendered from it — everything else is
+derived. Concretely:
+
+- **What belongs:** one `[[entities]]` per place holding value — `id`
+  (stable, URL-safe: it becomes `<id>.html`), `kind` (`wallet` | `bank` |
+  `exchange`), human `label`/`detail`, and for exactly the on-chain wallet(s)
+  the `wallet` name matching `setup`/`sync --wallet`. Plus `[[fiat]]` rows:
+  `entity_id`, `amount_eur`, and a `note` carrying the **as-of date and where
+  the figure came from** (e.g. `note = "KBC app balance, 2024-06-01"`).
+- **What does NOT belong:** secrets — no xpubs, no private keys, no RPC
+  passwords; the file sits next to your data dir, not a vault, and nothing
+  reads secrets from it. No auto-derived balances either: a checking balance
+  cannot be computed from a partial statement (no opening balance — the same
+  pre-export problem as the BTC pool), so any `[[fiat]]` amount without a
+  human as-of note is a guess, not data. And nothing the tool computes itself
+  (cost basis, gains, UTXO values) — those stay derived so they can't drift.
+- **Validation:** unknown `entity_id` in `[[fiat]]` aborts with an error
+  naming the ghost; a file with no `[[entities]]` aborts too. Unspent chain
+  outputs land in the entity whose `wallet` matches the synced wallet, or in
+  the single entity when only one is declared. `utxoproof portfolio` prints
+  the resulting allocation, so misassignment is visible immediately.
+
 That writes `overview/overview.html`, `entities/<id>.html`, and
 `provenance/provenance_<txid>_<vout>.html` per unspent UTXO, so entity-page
 UTXO links resolve. Pass `--ledgers ledgers.csv` (also wired in `run.sh` via
@@ -312,6 +338,33 @@ Now the analytical commands read the local DB:
 `status` values holdings at `--price` (or yesterday's oracle close without it).
 `advise` ranks UTXOs by tax-if-sold with sell/hold/borrow/estate/privacy flags.
 `provenance` walks a UTXO back to its origin with per-step EUR values.
+
+## 5b. Flow C — bank statements (fiat-leg corroboration)
+
+Bank CSVs prove the euro side of your trades. They corroborate exchange legs
+(plan Sec. 11), join the evidence ZIP via `--source`, and feed the
+`[[fiat]]` rows you hand-assert in `entities.toml` — but they **never enter
+the cost pool**: a statement is a list of movements, not a balance, and only
+you know the opening position.
+
+```bash
+.venv/bin/utxoproof import --file ~/kbc-checking.csv --type kbc --out /tmp/utxo/bank-rows.csv
+```
+
+Supported types: `ing`, `kbc`, `bnp`, `belfius`, `argenta` (all `;`-delimited,
+BOM-tolerant). Every profile header is best-effort and **UNVERIFIED against
+live exports** — columns match by alias lists, so if your export renames a
+header, check whether an alias already covers it and report the exact header
+line otherwise; do not silently hand-edit the CSV. `run.sh` automates this
+with `BANK_CSV` + `BANK_TYPE` (defaults `kbc`): `stage_bank` converts to
+`$DATA_DIR/bank-rows.csv` and attaches the statement as a report `--source`.
+
+Review the converted rows before trusting a year (`description`, `amount_eur`,
+counterparty IBAN, reference). The fuzzy fiat-leg matcher
+(`match_fiat_legs`: same calendar date ±2 days, exact euro amount) is still a
+skeleton — matches are shown on the bank-review page for eyeballing, and
+unmatched rows are listed for manual review rather than auto-booked. The demo
+site's bank page (`bank/bank.html`, KBC fixture) shows exactly this shape.
 
 ## 6. Price history
 

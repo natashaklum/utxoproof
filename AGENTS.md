@@ -107,7 +107,10 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   computed (needs annual bracket table); the report says so.
 - Exchanges: `kraken_csv` / `coinbase_csv` / `binance_csv` / `bisq_csv` yield
   `exchange.ExchangeTx` (Bisq defaults non_kyc). Banks: `banks.py` profile
-  engine (headers UNVERIFIED, alias-driven); `matching.py` fiat-leg matcher.
+  engine (headers UNVERIFIED, alias-driven); `matching.py` fiat-leg matcher
+  (skeleton: review-only, no production callers). Bank rows are evidence, never
+  pool input; `run.sh` converts via `BANK_CSV`/`BANK_TYPE` into bank-rows.csv +
+  report `--source`; demo bank page + `kbc-checking` entity via `write_bank_page`.
   All non-Kraken shapes are best-effort fixtures for later correction.
 - Deposits enter the moving-average pool at stated or receipt-date price
   (`--price-history` CSV, else a loud error — never silent zero).
