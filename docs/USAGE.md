@@ -382,6 +382,20 @@ through today):
 ls data/  # btc_eur_daily.csv (Kraken + blockchain.info x ECB), usd_eur_daily.csv (ECB)
 ```
 
+Three files, three roles: `btc_eur_daily.csv` is the consumed series
+(`date,close_eur,source`); `btc_usd_daily.csv` keeps the raw upstream BTC/USD
+prints and `usd_eur_daily.csv` the raw ECB business-day rates, so later
+tweaks re-stitch offline via `scripts/fetch_price_history.py --offline`
+without touching API rate limits. Regens only *add* dates — shipped rows are
+never revised (tax basis filed off old rows must stay reproducible), and the
+script refuses to write a gappy series.
+
+Why EUR-first instead of BTC/USD: EUR is the pipeline currency (Belgian tax),
+and Kraken `XXBTZEUR` is the actual EU execution venue — one direct print
+instead of routing every valuation through two. The BTC/USD × ECB synthesis
+covers only the pre-2024 era with no EUR venue history; the ECB file converts
+USD-denominated legs at the official reference rate.
+
 `EURPriceOracle.load_csv` imports them (existing rows win, so live data is
 never clobbered). Refresh the vendored files with
 `scripts/fetch_price_history.py`. Regenerate the demo site any time with

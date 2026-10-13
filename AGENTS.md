@@ -94,8 +94,11 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   entity bars use dominant-KYC color.
 - Price history: `utxoproof/data/btc_eur_daily.csv` (2010-08-18 first real print ->
   now; Kraken native, blockchain.info x ECB before) and
-  `utxoproof/data/usd_eur_daily.csv` (ECB 1999 -> now). Refresh via
-  `scripts/fetch_price_history.py`. Seed caches with
+  `utxoproof/data/usd_eur_daily.csv` (ECB 1999 -> now), plus raw upstream
+  `utxoproof/data/btc_usd_daily.csv` for offline re-stitching. Refresh via
+  `scripts/fetch_price_history.py` (extends the 2024 seam pattern: BCI covers
+  what Kraken retention lacks; regens add dates only, shipped rows win; the
+  script refuses gappy output). Seed caches with
   `EURPriceOracle.load_csv` (existing rows win). All default price paths are
   offline (bundled CSV; stale-noted past coverage; strict miss outside it);
   the live Kraken/CoinGecko oracle runs only with `--live-prices`.
