@@ -97,16 +97,18 @@ stage_setup() {
     if [ -n "$XPUB" ] && [ -n "$FINGERPRINT" ]; then
         log "setup: wallet $WALLET via $RPC_URL (user ${RPC_USER:-<none>})"
         dbg_rpc
-        setup_out=$("$UTXOPROOF_BIN" setup \
+        if setup_out=$("$UTXOPROOF_BIN" setup \
             --rpc-url "$RPC_URL" --rpc-user "$RPC_USER" \
             --rpc-password "$RPC_PASSWORD" \
             --xpub "$XPUB" --fingerprint "$FINGERPRINT" \
             --wallet "$WALLET" \
             --purpose "$PURPOSE" --coin "$COIN" --account "$ACCOUNT" \
-            --timestamp "$RESCAN_FROM" 2>&1) || {
+            --timestamp "$RESCAN_FROM" 2>&1); then
+            printf '%s\n' "$setup_out"
+        else
             log "warning: setup skipped (node unreachable or RPC error)"
             printf '%s\n' "$setup_out"
-        }
+        fi
     else
         log "note: setup skipped (set XPUB+FINGERPRINT to enable on-chain stages)"
     fi
@@ -120,12 +122,14 @@ stage_sync() {
     if [ -n "$XPUB" ] && [ -n "$FINGERPRINT" ]; then
         log "sync: wallet $WALLET via $RPC_URL (user ${RPC_USER:-<none>})"
         dbg_rpc
-        sync_out=$("$UTXOPROOF_BIN" sync --db "$DATA_DIR/utxoproof.db" \
+        if sync_out=$("$UTXOPROOF_BIN" sync --db "$DATA_DIR/utxoproof.db" \
             --rpc-url "$RPC_URL" --rpc-user "$RPC_USER" \
-            --rpc-password "$RPC_PASSWORD" --wallet "$WALLET" 2>&1) || {
+            --rpc-password "$RPC_PASSWORD" --wallet "$WALLET" 2>&1); then
+            printf '%s\n' "$sync_out"
+        else
             log "warning: on-chain sync skipped (node unreachable or RPC error)"
             printf '%s\n' "$sync_out"
-        }
+        fi
     else
         log "note: on-chain sync skipped (set XPUB+FINGERPRINT to enable)"
     fi
@@ -138,15 +142,17 @@ stage_portfolio() {
     log "portfolio: build overview + entity pages"
     if [ -n "$ENTITIES_FILE" ] && [ -f "$DATA_DIR/utxoproof.db" ]; then
         if [ -f "$ENTITIES_FILE" ]; then
-            port_out=$("$UTXOPROOF_BIN" portfolio --db "$DATA_DIR/utxoproof.db" \
+            if port_out=$("$UTXOPROOF_BIN" portfolio --db "$DATA_DIR/utxoproof.db" \
                 --entities "$ENTITIES_FILE" --wallet "$WALLET" \
                 --price "${BTC_PRICE:-40000}" \
                 ${KRAKEN_LEDGERS:+--ledgers "$KRAKEN_LEDGERS"} \
                 ${KRAKEN_TRADES:+--trades "$KRAKEN_TRADES"} \
-                --out "$DATA_DIR/portfolio" 2>&1) || {
+                --out "$DATA_DIR/portfolio" 2>&1); then
+                printf '%s\n' "$port_out"
+            else
                 log "warning: portfolio build skipped (entity config or DB issue)"
                 printf '%s\n' "$port_out"
-            }
+            fi
         else
             log "warning: entities file not found: $ENTITIES_FILE"
         fi
