@@ -33,6 +33,7 @@ class BitcoinCoreOnchainImporter:
         self._rpc = rpc
         self._db = db
         self._height_cache: dict[str, int] = {}
+        self._mine_cache: dict[str, bool] = {}
 
     # -- setup -----------------------------------------------------------
 
@@ -70,6 +71,7 @@ class BitcoinCoreOnchainImporter:
         """Import all wallet transactions not yet in the DB. Returns a summary."""
         seen = {row[0] for row in self._db.execute("SELECT txid FROM transactions").fetchall()}
         summary = {"txs_seen": 0, "new_txs": 0, "self_transfers": 0}
+        self._mine_cache = {}
         for entry in self._rpc.list_transactions(wallet):
             summary["txs_seen"] += 1
             txid = str(entry["txid"])
@@ -80,6 +82,7 @@ class BitcoinCoreOnchainImporter:
             summary["new_txs"] += 1
             summary["self_transfers"] += int(self_transfer)
             seen.add(txid)
+        summary["ownership_fixed"] = self.refresh_ownership()
         self._db.execute(
             "INSERT OR REPLACE INTO sync_state (key, value, updated_at) VALUES (?,?,?)",
             (
@@ -92,6 +95,40 @@ class BitcoinCoreOnchainImporter:
         return summary
 
     # -- storage ----------------------------------------------------------
+
+    def _is_mine(self, address: str | None) -> bool:
+        """Whether an output address belongs to any wallet (cached per run).
+
+        Address-less outputs (OP_RETURN, bare scripts) are never ours.
+        RPC failures fail open (assumed ours) to preserve pre-ownership syncs.
+        """
+        if not address:
+            return False
+        if address not in self._mine_cache:
+            try:
+                self._mine_cache[address] = bool(
+                    self._rpc.getaddressinfo(address).get("ismine", False)
+                )
+            except BitcoinRPCError:
+                self._mine_cache[address] = True
+        return self._mine_cache[address]
+
+    def refresh_ownership(self) -> int:
+        """Re-check ownership of every unspent output. Returns rows corrected to external."""
+        fixed = 0
+        rows = self._db.execute(
+            "SELECT txid, vout, address, is_mine FROM tx_outputs WHERE spent_by_txid IS NULL"
+        ).fetchall()
+        for txid, vout, address, is_mine in rows:
+            mine = self._is_mine(address)
+            if bool(is_mine) != mine:
+                self._db.execute(
+                    "UPDATE tx_outputs SET is_mine=? WHERE txid=? AND vout=?",
+                    (int(mine), txid, vout),
+                )
+                fixed += int(not mine)
+        self._db.commit()
+        return fixed
 
     def _block_height(self, blockhash: str | None) -> int | None:
         if not blockhash:
@@ -127,9 +164,15 @@ class BitcoinCoreOnchainImporter:
             address = vout.get("scriptPubKey", {}).get("address")
             addresses.append(address)
             self._db.execute(
-                "INSERT OR IGNORE INTO tx_outputs (txid, vout, address, value_sat) "
-                "VALUES (?,?,?,?)",
-                (txid, int(vout["n"]), address, _btc_to_sat(vout["value"])),
+                "INSERT OR IGNORE INTO tx_outputs (txid, vout, address, value_sat, is_mine) "
+                "VALUES (?,?,?,?,?)",
+                (
+                    txid,
+                    int(vout["n"]),
+                    address,
+                    _btc_to_sat(vout["value"]),
+                    int(self._is_mine(address)),
+                ),
             )
         self._db.commit()
         if known_addresses is None or not addresses:

@@ -76,6 +76,14 @@ class BitcoinRPC:
     def list_transactions(self, wallet: str, count: int = 1000) -> list[dict[str, Any]]:
         return list(self.wallet(wallet).call("listtransactions", "*", count))
 
+    def getbalances(self, wallet: str) -> dict[str, Any]:
+        """Wallet balances split into mine/watchonly buckets (BTC floats)."""
+        return dict(self.wallet(wallet).call("getbalances"))
+
+    def getaddressinfo(self, address: str) -> dict[str, Any]:
+        """Address metadata; ``ismine`` tells whether any wallet owns it."""
+        return dict(self.call("getaddressinfo", address))
+
     def get_raw_transaction(
         self, txid: str, verbose: bool = True, blockhash: str | None = None
     ) -> dict[str, Any]:

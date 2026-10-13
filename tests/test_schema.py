@@ -47,3 +47,24 @@ def test_source_manifest_dedupes_on_sha256() -> None:
     except sqlite3.IntegrityError:
         return
     raise AssertionError("duplicate sha256 import was not rejected")
+
+
+def test_is_mine_defaults_to_ours() -> None:
+    db = open_memory_db()
+    db.execute("INSERT INTO tx_outputs (txid, vout, value_sat) VALUES ('mine', 0, 100000)")
+    row = db.execute("SELECT is_mine FROM tx_outputs WHERE txid='mine'").fetchone()
+    assert row == (1,)
+
+
+def test_migration_adds_is_mine_to_old_db() -> None:
+    from utxoproof.db import init_db
+
+    db = sqlite3.connect(":memory:")
+    db.execute(
+        "CREATE TABLE tx_outputs (txid TEXT NOT NULL, vout INTEGER NOT NULL, "
+        "value_sat INTEGER NOT NULL, PRIMARY KEY (txid, vout))"
+    )
+    db.execute("INSERT INTO tx_outputs (txid, vout, value_sat) VALUES ('old', 0, 50000)")
+    init_db(db)  # must add the column without touching existing rows
+    row = db.execute("SELECT value_sat, is_mine FROM tx_outputs WHERE txid='old'").fetchone()
+    assert row == (50000, 1)

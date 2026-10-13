@@ -7,9 +7,20 @@ from importlib import resources
 
 
 def init_db(db: sqlite3.Connection) -> None:
-    """Create all utxoproof tables if absent."""
+    """Create all utxoproof tables if absent, migrating old DBs forward."""
     schema = resources.files("utxoproof").joinpath("schema.sql").read_text(encoding="utf-8")
     db.executescript(schema)
+    _migrate(db)
+
+
+# Migration notes (idempotent; each guarded by PRAGMA table_info):
+# - 2026-10-13: tx_outputs.is_mine (ownership-aware sync; old rows keep 1 =
+#   assumed ours, corrected by the sync ownership pass or `reconcile`).
+def _migrate(db: sqlite3.Connection) -> None:
+    cols = {row[1] for row in db.execute("PRAGMA table_info(tx_outputs)").fetchall()}
+    if "is_mine" not in cols:
+        db.execute("ALTER TABLE tx_outputs ADD COLUMN is_mine INTEGER NOT NULL DEFAULT 1")
+    db.commit()
 
 
 def open_memory_db() -> sqlite3.Connection:

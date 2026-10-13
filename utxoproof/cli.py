@@ -624,6 +624,12 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--rpc-password", default="")
     sync.add_argument("--wallet", default="utxoproof_watchonly")
     sync.add_argument("--db", default=None, help="SQLite DB (default: <data-dir>/utxoproof.db)")
+    rec = sub.add_parser("reconcile", help="DB ours-unspent vs node balances")
+    rec.add_argument("--db", default=None, help="SQLite DB (default: <data-dir>/utxoproof.db)")
+    rec.add_argument("--rpc-url", default="http://127.0.0.1:8332")
+    rec.add_argument("--rpc-user", default="")
+    rec.add_argument("--rpc-password", default="")
+    rec.add_argument("--wallet", default="utxoproof_watchonly")
     status = sub.add_parser("status", help="Holdings, cost basis, unrealized P&L")
     status.add_argument("--input", required=True, help="Manual CSV path")
     status.add_argument("--price", type=Decimal, default=None, help="BTC/EUR price override")
@@ -754,7 +760,7 @@ def _parse_utxo_targets(args: argparse.Namespace, db: sqlite3.Connection) -> lis
             targets.append((txid, int(vout)))
         return targets
     rows = db.execute(
-        "SELECT txid, vout FROM tx_outputs WHERE spent_by_txid IS NULL LIMIT 26"
+        "SELECT txid, vout FROM tx_outputs WHERE spent_by_txid IS NULL AND is_mine = 1 LIMIT 26"
     ).fetchall()
     if len(rows) > 25:
         print("note: provenance limited to 25 UTXOs")
@@ -788,6 +794,34 @@ def _run_sync(args: argparse.Namespace) -> int:
     importer = BitcoinCoreOnchainImporter(rpc, _open_db(str(db_path(args))))
     summary = importer.sync(args.wallet)
     print(f"sync: {summary['new_txs']} new / {summary['txs_seen']} seen")
+    print(f"ownership: {summary['ownership_fixed']} unspent outputs corrected to external")
+    return 0
+
+
+def _run_reconcile(args: argparse.Namespace) -> int:
+    """Compare ours-unspent DB total against node balances (diagnostic, never crashes)."""
+    from utxoproof.bitcoin_rpc import BitcoinRPC
+
+    db = _open_db(str(db_path(args)))
+    db_sats, db_n = db.execute(
+        "SELECT COALESCE(SUM(value_sat), 0), COUNT(*) FROM tx_outputs "
+        "WHERE spent_by_txid IS NULL AND is_mine = 1"
+    ).fetchone()
+    rpc = BitcoinRPC(args.rpc_url, args.rpc_user, args.rpc_password)
+    balances = rpc.getbalances(args.wallet)
+    node_sats = 0
+    for bucket in ("mine", "watchonly"):
+        for key in ("trusted", "untrusted_pending"):
+            node_sats += int(Decimal(str(balances.get(bucket, {}).get(key, 0))) * 100_000_000)
+    db_btc = Decimal(int(db_sats)) / 100_000_000
+    node_btc = Decimal(node_sats) / 100_000_000
+    print(f"db_unspent: {int(db_n)} UTXOs, {db_btc:f} BTC")
+    print(f"node: {node_btc:f} BTC (mine+watchonly trusted+pending)")
+    gap = node_btc - db_btc
+    if gap == 0:
+        print("RECONCILED (gap 0)")
+    else:
+        print(f"GAP {gap:f} BTC — modeling incomplete, do not file from this")
     return 0
 
 
@@ -1186,6 +1220,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_setup(args)
     if args.command == "sync":
         return _run_sync(args)
+    if args.command == "reconcile":
+        return _run_reconcile(args)
     if args.command == "status":
         return _run_status(args)
     if args.command == "privacy":

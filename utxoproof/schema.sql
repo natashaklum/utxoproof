@@ -35,6 +35,11 @@ CREATE TABLE IF NOT EXISTS tx_outputs (
     -- Spend tracking
     spent_by_txid   TEXT,                -- NULL = currently unspent
     spent_by_input  INTEGER,
+    -- Ownership (plan Sec. 9): 1 = ours (default; sample/demo rows stay counted),
+    -- 0 = proven external (e.g. payment to a third party). Totals, advisory and
+    -- portfolio count only is_mine=1 unspent outputs; external rows stay in-graph
+    -- for chain context. Added after v1 DBs existed; see init_db migration.
+    is_mine         INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (txid, vout)
 );
 

@@ -162,3 +162,28 @@ def test_cli_advise(tmp_path, capsys) -> None:
     assert (tmp_path / "advisory.html").exists()
     html = (tmp_path / "advisory.html").read_text(encoding="utf-8")
     assert "privacy_risk" in html
+
+
+def test_analyze_wallet_ignores_proven_external_outputs() -> None:
+    import datetime
+    from decimal import Decimal
+
+    from utxoproof.advisory import analyze_wallet
+    from utxoproof.kyc import create_sample_graph
+
+    db = create_sample_graph()
+    before = analyze_wallet(
+        db, lambda _d: Decimal("20000"), Decimal("40000"), datetime.date(2024, 6, 1)
+    )
+    assert before, "sample graph must have unspent outputs"
+    victim = f"{before[0].txid}:{before[0].vout}"
+    db.execute(
+        "UPDATE tx_outputs SET is_mine = 0 WHERE txid = ? AND vout = ?",
+        (before[0].txid, before[0].vout),
+    )
+    db.commit()
+    after = analyze_wallet(
+        db, lambda _d: Decimal("20000"), Decimal("40000"), datetime.date(2024, 6, 1)
+    )
+    assert victim not in {f"{a.txid}:{a.vout}" for a in after}
+    assert len(after) == len(before) - 1

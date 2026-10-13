@@ -154,7 +154,7 @@ def analyze_wallet(
     rows = db.execute(
         "SELECT o.txid, o.vout, o.value_sat, o.kyc_status, o.kyc_fraction, t.block_time "
         "FROM tx_outputs o JOIN transactions t ON t.txid=o.txid "
-        "WHERE o.spent_by_txid IS NULL"
+        "WHERE o.spent_by_txid IS NULL AND o.is_mine = 1"
     ).fetchall()
     for txid, vout, value_sat, kyc_status, kyc_fraction, block_time in rows:
         amount_btc = Decimal(value_sat) / Decimal(100_000_000)

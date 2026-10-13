@@ -166,6 +166,18 @@ were imported with timestamp `now` (no historical rescan): check
 manually or set `RESCAN_FROM=0` (unix time also accepted) in `run.sh` before
 `setup` — the default `now` keeps first setups fast.
 
+Only outputs proven yours count: `sync` marks each output via `getaddressinfo`
+(`is_mine`), so coins you sent away (Kraken deposits, payments) stay in the
+chain graph for context but leave every total — advisory, portfolio and the
+default provenance targets. Verify the books against the node any time with:
+
+```bash
+utxoproof reconcile --db <data-dir>/utxoproof.db --rpc-url ... --wallet <name>
+```
+
+which prints `RECONCILED (gap 0)` or `GAP … BTC` instead of eyeballing
+`overview.html` against `getbalances`.
+
 ## 3. Configuration (`utxoproof.toml`)
 
 Optional, not mandatory. `report` and `import` read it; every other command
