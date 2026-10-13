@@ -335,7 +335,7 @@ Now the analytical commands read the local DB:
   --price 40000 --out /tmp/utxo/provenance
 ```
 
-`status` values holdings at `--price` (or yesterday's oracle close without it).
+`status` values holdings at `--price` (or the bundled history close without it).
 `advise` ranks UTXOs by tax-if-sold with sell/hold/borrow/estate/privacy flags.
 `provenance` walks a UTXO back to its origin with per-step EUR values.
 
@@ -368,9 +368,15 @@ site's bank page (`bank/bank.html`, KBC fixture) shows exactly this shape.
 
 ## 6. Price history
 
-Live prices come from Kraken OHLC (CoinGecko fallback, ECB for fiat) and are
-cached in SQLite. For offline years, seed the cache from the vendored history
-(first real BTC print 2010-08-18 through today):
+Prices come from the history vendored with the package — no network on any
+default path. `status`/`advise`/`provenance`/`portfolio`/`report` value
+display prices at the bundled close (stale-noted past file coverage), and
+acquisition curves raise naming the date outside coverage instead of
+inventing basis. Pass `--price` for an explicit print, `--price-history
+other.csv` for a custom curve, or `--live-prices` to opt back into the live
+Kraken OHLC oracle (CoinGecko fallback, ECB for fiat), which caches into
+SQLite. Seeded files live under `data/` (first real BTC print 2010-08-18
+through today):
 
 ```bash
 ls data/  # btc_eur_daily.csv (Kraken + blockchain.info x ECB), usd_eur_daily.csv (ECB)

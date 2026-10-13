@@ -96,7 +96,9 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   now; Kraken native, blockchain.info x ECB before) and
   `utxoproof/data/usd_eur_daily.csv` (ECB 1999 -> now). Refresh via
   `scripts/fetch_price_history.py`. Seed caches with
-  `EURPriceOracle.load_csv` (existing rows win).
+  `EURPriceOracle.load_csv` (existing rows win). All default price paths are
+  offline (bundled CSV; stale-noted past coverage; strict miss outside it);
+  the live Kraken/CoinGecko oracle runs only with `--live-prices`.
 - Packaging: `Dockerfile` (+`.dockerignore`), `docker-compose.yml` (mainnet)
   and `docker-compose.regtest.yml` (dev). CI `docker` job builds + smoke-tests
   the image (no docker on dev boxes, so image builds are CI-only).

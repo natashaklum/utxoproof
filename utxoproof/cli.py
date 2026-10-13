@@ -330,19 +330,98 @@ def diagnose(csv_path: str | Path, price_at: PriceAt | None = None) -> DiagResul
 def load_price_history(path: str | Path | None) -> PriceAt | None:
     """Receipt-date price lookup seeded from a (date, close) history CSV.
 
-    Offline and deterministic. ``None`` falls back to the history vendored
-    with the package, so deposits work out of the box; dates outside its
-    coverage still fail loudly instead of valuing at zero.
+    Offline and deterministic: ``None`` falls back to the history vendored
+    with the package, so deposits work out of the box. Dates outside its
+    coverage raise instead of valuing at zero — and never touch the network.
     """
     from utxoproof.db import open_memory_db
-    from utxoproof.price_oracle import EURPriceOracle, bundled_history_path
+    from utxoproof.price_oracle import bundled_history_path
 
     source = Path(path).expanduser() if path else bundled_history_path()
     if not source.is_file():
         raise ValueError(f"price history not found: {source} (pass --price-history explicitly)")
-    oracle = EURPriceOracle(open_memory_db())
-    oracle.load_csv(source, "BTC/EUR", "price-history")
-    return oracle.get_btc_eur
+    db = open_memory_db()
+    _seed_bundled(db, source, label="price-history")
+
+    def price_at(day: datetime.date) -> Decimal:
+        row = db.execute(
+            "SELECT close_eur FROM price_cache WHERE pair = 'BTC/EUR' AND date = ?",
+            (day.isoformat(),),
+        ).fetchone()
+        if row is None:
+            raise ValueError(
+                f"no BTC/EUR close for {day.isoformat()} in {source.name}; "
+                "extend the history file instead of guessing a price"
+            )
+        return Decimal(row[0])
+
+    return price_at
+
+
+def _seed_bundled(
+    db: sqlite3.Connection, source: str | Path | None = None, label: str = "bundled-history"
+) -> None:
+    """Seed the price cache from the vendored history (existing rows win)."""
+    from utxoproof.price_oracle import EURPriceOracle, bundled_history_path
+
+    EURPriceOracle(db).load_csv(source or bundled_history_path(), "BTC/EUR", label)
+
+
+def _bundled_price_at(db: sqlite3.Connection, day: datetime.date) -> tuple[Decimal, str]:
+    """Latest bundled close on/before ``day`` for display prices (offline).
+
+    Seeds the cache first (existing rows win). Beyond file coverage the latest
+    available close is returned with an explicit stale note — snapshots may be
+    stale, never invented.
+    """
+    _seed_bundled(db)
+    row = db.execute(
+        "SELECT date, close_eur FROM price_cache "
+        "WHERE pair = 'BTC/EUR' AND date <= ? ORDER BY date DESC LIMIT 1",
+        (day.isoformat(),),
+    ).fetchone()
+    if row is None:
+        raise ValueError(
+            f"no bundled BTC/EUR close on or before {day.isoformat()}; refresh the vendored history"
+        )
+    stale = (day - datetime.date.fromisoformat(row[0])).days
+    note = f"bundled history close {row[0]}"
+    if stale:
+        note += f" (latest available, {stale} days stale)"
+    return Decimal(row[1]), note
+
+
+def _bundled_curve(db: sqlite3.Connection) -> PriceAt:
+    """Strict acquisition-date curve over bundled closes (offline).
+
+    Raises naming the date outside coverage — cost basis is never interpolated.
+    """
+    from utxoproof.price_oracle import EURPriceOracle, bundled_history_path
+
+    oracle = EURPriceOracle(db)
+    oracle.load_csv(bundled_history_path(), "BTC/EUR", "bundled-history")
+
+    def price_at(day: datetime.date) -> Decimal:
+        row = db.execute(
+            "SELECT close_eur FROM price_cache WHERE pair = 'BTC/EUR' AND date = ?",
+            (day.isoformat(),),
+        ).fetchone()
+        if row is None:
+            raise ValueError(
+                f"no bundled BTC/EUR close for {day.isoformat()}; "
+                "pass --price-history with coverage or --price explicitly"
+            )
+        return Decimal(row[0])
+
+    return price_at
+
+
+def _add_live_prices_arg(sub: argparse.ArgumentParser) -> None:
+    sub.add_argument(
+        "--live-prices",
+        action="store_true",
+        help="Query the live Kraken/CoinGecko oracle instead of bundled history",
+    )
 
 
 def _add_price_history_arg(sub: argparse.ArgumentParser) -> None:
@@ -576,6 +655,7 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--out", required=True, help="Output directory")
     report.add_argument("--config", default=None, help="utxoproof.toml path")
     _add_price_history_arg(report)
+    _add_live_prices_arg(report)
     report.add_argument("--db", default=None, help="SQLite DB (full report + oracle)")
     report.add_argument("--evidence-dir", default=None, help="Evidence root")
     report.add_argument("--full", action="store_true", help="Compose fullreport.html too")
@@ -636,6 +716,7 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--db", default=None, help="SQLite DB (default: <data-dir>/utxoproof.db)")
     status.add_argument("--out", default=None, help="Output directory for status.html")
     _add_price_history_arg(status)
+    _add_live_prices_arg(status)
     check = sub.add_parser("check", help="Diagnose pool coverage without crashing")
     check.add_argument("--input", required=True, help="Manual CSV path")
     _add_price_history_arg(check)
@@ -650,6 +731,7 @@ def build_parser() -> argparse.ArgumentParser:
     advise.add_argument(
         "--min-value", type=Decimal, default=Decimal("0"), help="Min EUR value to show"
     )
+    _add_live_prices_arg(advise)
     prov = sub.add_parser("provenance", help="Chain-of-custody report for a UTXO")
     prov.add_argument("utxo", help="txid:vout")
     prov.add_argument("--db", default=None, help="SQLite DB (default: <data-dir>/utxoproof.db)")
@@ -660,6 +742,7 @@ def build_parser() -> argparse.ArgumentParser:
     prov.add_argument("--evidence-dir", default=None, help="Evidence root")
     prov.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (funding labels)")
     prov.add_argument("--trades", default=None, help="Kraken trades.csv join for ledgers")
+    _add_live_prices_arg(prov)
     port = sub.add_parser("portfolio", help="Entity overview from synced UTXOs")
     port.add_argument("--db", default=None, help="SQLite DB (<data-dir>/utxoproof.db)")
     port.add_argument("--entities", required=True, help="Entities TOML file")
@@ -669,6 +752,7 @@ def build_parser() -> argparse.ArgumentParser:
     port.add_argument("--price", type=Decimal, default=None, help="BTC/EUR price override")
     port.add_argument("--as-of", default=None, help="As-of date YYYY-MM-DD (default: today)")
     port.add_argument("--out", default=None, help="Output directory for overview.html + entities/")
+    _add_live_prices_arg(port)
     attach = sub.add_parser("attach", help="Register a supporting file (scan, PDF, screenshot)")
     attach.add_argument("--file", required=True, help="File to register (copied in)")
     attach.add_argument("--db", default=None, help="SQLite DB (default: <data-dir>/utxoproof.db)")
@@ -828,17 +912,24 @@ def _run_reconcile(args: argparse.Namespace) -> int:
 
 
 def _resolve_price(price: Decimal | None, args: argparse.Namespace) -> tuple[Decimal, str]:
+    """Display price: explicit ``--price`` wins, else bundled history (offline).
+
+    The live Kraken/CoinGecko oracle only runs with ``--live-prices``.
+    """
     if price is not None:
         return price, "explicit --price"
     import datetime
 
     from utxoproof.paths import db_path
-    from utxoproof.price_oracle import EURPriceOracle
 
     db = _open_db(str(db_path(args)))
     day = datetime.datetime.now(datetime.UTC).date() - datetime.timedelta(days=1)
-    oracle = EURPriceOracle(db)
-    return oracle.get_btc_eur(day), f"Kraken close {day.isoformat()}"
+    if getattr(args, "live_prices", False):
+        from utxoproof.price_oracle import EURPriceOracle
+
+        oracle = EURPriceOracle(db)
+        return oracle.get_btc_eur(day), f"Kraken close {day.isoformat()}"
+    return _bundled_price_at(db, day)
 
 
 def _run_status(args: argparse.Namespace) -> int:
@@ -882,12 +973,16 @@ def _run_advise(args: argparse.Namespace) -> int:
             return price
 
     else:
-        from utxoproof.price_oracle import EURPriceOracle
+        if getattr(args, "live_prices", False):
+            from utxoproof.price_oracle import EURPriceOracle
 
-        oracle = EURPriceOracle(db)
-        curve = oracle.get_btc_eur
-        note = "daily close per acquisition date"
-        price = oracle.get_btc_eur(as_of)
+            oracle = EURPriceOracle(db)
+            curve = oracle.get_btc_eur
+            note = "daily close per acquisition date"
+            price = oracle.get_btc_eur(as_of)
+        else:
+            curve = _bundled_curve(db)
+            price, note = _bundled_price_at(db, as_of)
     advisories = [
         a for a in analyze_wallet(db, curve, price, as_of) if a.current_value_eur >= args.min_value
     ]
@@ -951,12 +1046,16 @@ def _run_portfolio(args: argparse.Namespace) -> int:
             return price
 
     else:
-        from utxoproof.price_oracle import EURPriceOracle
+        if getattr(args, "live_prices", False):
+            from utxoproof.price_oracle import EURPriceOracle
 
-        oracle = EURPriceOracle(db)
-        curve = oracle.get_btc_eur
-        note = "daily close per acquisition date"
-        price = oracle.get_btc_eur(as_of)
+            oracle = EURPriceOracle(db)
+            curve = oracle.get_btc_eur
+            note = "daily close per acquisition date"
+            price = oracle.get_btc_eur(as_of)
+        else:
+            curve = _bundled_curve(db)
+            price, note = _bundled_price_at(db, as_of)
     funding = FundingResult(matches={})
     try:
         funding = funding_from_ledgers(args.ledgers, db, trades_path=args.trades)
@@ -1026,12 +1125,16 @@ def _run_provenance(args: argparse.Namespace) -> int:
             return price
 
     else:
-        from utxoproof.price_oracle import EURPriceOracle
+        if getattr(args, "live_prices", False):
+            from utxoproof.price_oracle import EURPriceOracle
 
-        oracle = EURPriceOracle(db)
-        curve = oracle.get_btc_eur
-        note = "daily close per step date"
-        price = oracle.get_btc_eur(as_of)
+            oracle = EURPriceOracle(db)
+            curve = oracle.get_btc_eur
+            note = "daily close per step date"
+            price = oracle.get_btc_eur(as_of)
+        else:
+            curve = _bundled_curve(db)
+            price, note = _bundled_price_at(db, as_of)
     steps = build_provenance_chain(txid, vout, db, curve, args.depth)
     print(
         f"chain: {len(steps)} steps back to {steps[0].txid}:{steps[0].vout}" if steps else "empty"

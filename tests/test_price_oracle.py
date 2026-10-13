@@ -102,3 +102,141 @@ def test_csv_seed_serves_offline_and_never_clobbers(tmp_path) -> None:
     assert oracle.get_fiat_eur("USD", datetime.date(2023, 1, 13)) == Decimal("1") / Decimal(
         "1.0800"
     )
+
+
+def _bundled_last_date() -> datetime.date:
+    from utxoproof.price_oracle import bundled_history_path
+
+    with open(bundled_history_path(), newline="", encoding="utf-8") as f:
+        import csv
+
+        rows = [r for r in csv.DictReader(f) if r.get("date")]
+    return datetime.date.fromisoformat(rows[-1]["date"][:10])
+
+
+def test_bundled_price_at_exact_date_offline() -> None:
+    from utxoproof.cli import _bundled_price_at
+    from utxoproof.db import open_memory_db
+
+    price, note = _bundled_price_at(open_memory_db(), datetime.date(2023, 1, 10))
+    assert price > 0
+    assert note == "bundled history close 2023-01-10"
+
+
+def test_bundled_price_at_beyond_coverage_is_stale_not_invented() -> None:
+    from utxoproof.cli import _bundled_price_at
+    from utxoproof.db import open_memory_db
+
+    last = _bundled_last_date()
+    price, note = _bundled_price_at(open_memory_db(), last + datetime.timedelta(days=9))
+    assert price > 0
+    assert f"bundled history close {last.isoformat()}" in note
+    assert "9 days stale" in note
+
+
+def test_bundled_curve_strict_outside_coverage() -> None:
+    import pytest
+
+    from utxoproof.cli import _bundled_curve
+    from utxoproof.db import open_memory_db
+
+    curve = _bundled_curve(open_memory_db())
+    assert curve(datetime.date(2023, 1, 10)) > 0
+    with pytest.raises(ValueError, match="2009-01-03"):
+        curve(datetime.date(2009, 1, 3))
+
+
+def test_load_price_history_strict_without_network(monkeypatch) -> None:
+    import httpx
+    import pytest
+
+    from utxoproof.cli import load_price_history
+
+    class NoNetworkClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __getattr__(self, name: str):
+            raise AssertionError("network used on the default price path")
+
+    monkeypatch.setattr(httpx, "Client", NoNetworkClient)
+    price_at = load_price_history(None)
+    assert price_at is not None
+    assert price_at(datetime.date(2023, 1, 10)) > 0
+    with pytest.raises(ValueError, match="2009-01-03"):
+        price_at(datetime.date(2009, 1, 3))
+
+
+def test_status_without_price_is_offline_and_bundled(tmp_path, capsys, monkeypatch) -> None:
+    from pathlib import Path
+
+    import httpx
+
+    from utxoproof.cli import main
+
+    class NoNetworkClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __getattr__(self, name: str):
+            raise AssertionError("network used on the default price path")
+
+    monkeypatch.setattr(httpx, "Client", NoNetworkClient)
+    assert (
+        main(
+            [
+                "--data-dir",
+                str(tmp_path),
+                "status",
+                "--input",
+                str(Path(__file__).parent / "fixtures" / "manual_2023.csv"),
+                "--db",
+                str(tmp_path / "t.db"),
+                "--out",
+                str(tmp_path / "status"),
+            ]
+        )
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert "bundled history close" in out
+    assert (tmp_path / "status" / "status.html").is_file()
+
+
+def test_live_prices_opt_in_still_queries_oracle(tmp_path, capsys, monkeypatch) -> None:
+    from pathlib import Path
+
+    import httpx
+
+    from utxoproof.cli import main
+
+    day = datetime.datetime.now(datetime.UTC).date() - datetime.timedelta(days=1)
+    ts = int(datetime.datetime(day.year, day.month, day.day, tzinfo=datetime.UTC).timestamp())
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "OHLC" in request.url.path
+        return httpx.Response(
+            200,
+            json={"error": [], "result": {"XXBTZEUR": [[ts, "1", "1", "1", "77777", "1", "1", 0]]}},
+        )
+
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        httpx, "Client", lambda *a, **k: real_client(transport=httpx.MockTransport(handler))
+    )
+    assert (
+        main(
+            [
+                "--data-dir",
+                str(tmp_path),
+                "status",
+                "--input",
+                str(Path(__file__).parent / "fixtures" / "manual_2023.csv"),
+                "--db",
+                str(tmp_path / "t.db"),
+                "--live-prices",
+            ]
+        )
+        == 0
+    )
+    assert "Kraken close" in capsys.readouterr().out

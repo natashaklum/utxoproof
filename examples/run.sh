@@ -27,7 +27,7 @@ set -euo pipefail
 : "${BANK_CSV:=}"                 # e.g. "$HOME/exports/kbc.csv"; empty skips bank review
 : "${BANK_TYPE:=kbc}"             # ing | kbc | bnp | belfius | argenta
 : "${TAX_YEAR:=$(date +%Y)}"
-: "${BTC_PRICE:=}"                # empty = oracle yesterday-close for status
+: "${BTC_PRICE:=}"                # empty = bundled history close for status
 : "${CONFIG_FILE:=}"              # e.g. "$DATA_DIR/utxoproof.toml"
 : "${XPUB:=}"                     # account xpub/ypub/zpub; empty skips on-chain stages
 : "${FINGERPRINT:=}"             # master fingerprint, 8 hex; paired with XPUB
