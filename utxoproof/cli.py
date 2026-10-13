@@ -781,8 +781,10 @@ def _run_setup(args: argparse.Namespace) -> int:
     raw_timestamp = getattr(args, "timestamp", "now")
     timestamp = int(raw_timestamp) if str(raw_timestamp).isdigit() else raw_timestamp
     for kind, desc in descriptors.items():
-        importer.import_descriptor(args.wallet, desc, timestamp)
-        print(f"imported {kind}: {desc}")
+        if importer.import_descriptor(args.wallet, desc, timestamp):
+            print(f"imported {kind}: {desc}")
+        else:
+            print(f"already imported, skipping {kind}")
     return 0
 
 

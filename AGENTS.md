@@ -75,7 +75,8 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
 - One data dir: `utxoproof/paths.py` (`--data-dir` > `$UTXOPROOF_DATA_DIR` >
   `~/.utxoproof`); `--db`/`--evidence-dir` override per call.
 - Runnable workflows live in `examples/` (single self-contained `run.sh`,
-  `MODE=prepare` stops on shortfalls, `MODE=refresh` idempotent, incl.
+  `MODE=prepare` stops on shortfalls unless `ALLOW_SHORTFALLS=1`,
+  `MODE=refresh` idempotent, incl.
   `setup`/`sync`/`portfolio` on-chain stages); covered by
   `tests/test_run_scripts.py` driving it against fixtures.
 - Entities for the overview come from a TOML file (`examples/entities.example.toml`;

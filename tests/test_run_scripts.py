@@ -78,6 +78,26 @@ def test_prepare_aborts_on_shortfalls(tmp_path: Path) -> None:
     assert "shortfalls" in proc.stdout + proc.stderr
 
 
+def test_prepare_allow_shortfalls_proceeds_with_warning(tmp_path: Path) -> None:
+    ledgers = tmp_path / "ledgers.csv"
+    _shortfall_ledgers(ledgers)
+    proc = _run(
+        "run.sh",
+        {
+            "DATA_DIR": str(tmp_path / "data"),
+            "KRAKEN_LEDGERS": str(ledgers),
+            "KRAKEN_TRADES": "",
+            "TAX_YEAR": "2023",
+            "BTC_PRICE": "40000",
+            "MODE": "prepare",
+            "ALLOW_SHORTFALLS": "1",
+        },
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    assert "ALLOW_SHORTFALLS" in proc.stdout + proc.stderr
+    assert (tmp_path / "data" / "manual.csv").is_file()
+
+
 def test_scripts_are_executable() -> None:
     for name in ("run.sh",):
         mode = (REPO / "examples" / name).stat().st_mode

@@ -38,6 +38,7 @@ set -euo pipefail
 : "${ACCOUNT:=0}"                 # BIP44 account
 : "${ENTITIES_FILE:=}"            # path to entities TOML; empty skips portfolio
 : "${MODE:=prepare}"             # prepare | refresh
+: "${ALLOW_SHORTFALLS:=}"         # non-empty: prepare proceeds despite shortfalls (loud warning)
 : "${DEBUG:=}"                    # non-empty prints each on-chain command (password redacted)
 : "${RESCAN_FROM:=now}"           # setup rescan: 'now' (fast) or unix time / 0 for full
 
@@ -207,7 +208,11 @@ case "$MODE" in
         case "$shortfalls" in
             "shortfalls: 0") log "no shortfalls — proceeding" ;;
             *)
-                fail "coverage has shortfalls ($shortfalls) — aborting per prepare mode; investigate with 'utxoproof check' or run with MODE=refresh"
+                if [ -n "$ALLOW_SHORTFALLS" ]; then
+                    log "WARNING: proceeding despite $shortfalls (ALLOW_SHORTFALLS set) — figures are upper bounds, do not file from this"
+                else
+                    fail "coverage has shortfalls ($shortfalls) — aborting per prepare mode; investigate with 'utxoproof check', run with MODE=refresh, or set ALLOW_SHORTFALLS=1"
+                fi
                 ;;
         esac
         stage_compute

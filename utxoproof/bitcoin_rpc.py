@@ -73,6 +73,13 @@ class BitcoinRPC:
     def import_descriptors(self, wallet: str, descriptors: list[dict[str, Any]]) -> list[Any]:
         return list(self.wallet(wallet).call("importdescriptors", descriptors))
 
+    def listdescriptors(self, wallet: str) -> list[dict[str, Any]]:
+        """Imported descriptors with their ranges (`Core >= 22`)."""
+        result = self.wallet(wallet).call("listdescriptors")
+        if isinstance(result, dict):
+            result = result.get("descriptors", [])
+        return list(result)
+
     def list_transactions(self, wallet: str, count: int = 1000) -> list[dict[str, Any]]:
         return list(self.wallet(wallet).call("listtransactions", "*", count))
 

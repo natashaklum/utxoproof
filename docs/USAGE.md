@@ -122,8 +122,11 @@ MODE=refresh bash ~/utxoproof-data/run.sh   # repeatable: refresh + alltime
 ```
 
 `MODE=prepare` (the default) **stops** when `check` reports shortfalls — first
-runs deserve interrogation, not momentum. `MODE=refresh` is idempotent (full
-rewrite, no merge logic) and safe to re-run or cron once you trust the data.
+runs deserve interrogation, not momentum. If the gaps are understood and you
+want numbers-with-caveats anyway, `ALLOW_SHORTFALLS=1` proceeds with a loud
+warning (figures are upper bounds, never filing-ready). `MODE=refresh` is
+idempotent (full rewrite, no merge logic) and safe to re-run or cron once you
+trust the data.
 Both print `==>` stage lines, both honor `UTXOPROOF_DATA_DIR`, and both are
 covered by end-to-end tests running them against fixtures.
 

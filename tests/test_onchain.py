@@ -179,3 +179,57 @@ def test_reconcile_compares_db_against_node(capsys, tmp_path) -> None:
         )
     out = capsys.readouterr().out
     assert "RECONCILED" in out
+
+
+def test_encompassing_range() -> None:
+    from utxoproof.onchain import BitcoinCoreOnchainImporter
+
+    assert BitcoinCoreOnchainImporter.encompassing_range(None) == (0, 1000)
+    assert BitcoinCoreOnchainImporter.encompassing_range((0, 1000)) is None
+    assert BitcoinCoreOnchainImporter.encompassing_range((0, 1002)) is None
+    # Stored narrower range widens instead of being rejected by Core.
+    assert BitcoinCoreOnchainImporter.encompassing_range((0, 10)) == (0, 1000)
+    assert BitcoinCoreOnchainImporter.encompassing_range((5, 5000)) == (0, 5000)
+
+
+def test_import_descriptor_skips_already_covered() -> None:
+    import json
+
+    import httpx
+
+    from utxoproof.bitcoin_rpc import BitcoinRPC
+    from utxoproof.db import open_memory_db
+
+    calls: list[str] = []
+    desc = (
+        "wpkh([aabbccdd/84h/0h/0h]"
+        "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1R59rh8C/0/*)"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        method = body["method"]
+        calls.append(method)
+        if method == "listdescriptors":
+            return httpx.Response(
+                200,
+                json={
+                    "result": {
+                        "descriptors": [
+                            {"desc": desc + "#0fujx7aa", "range": [0, 1002], "active": False}
+                        ]
+                    },
+                    "error": None,
+                },
+            )
+        raise AssertionError(f"importdescriptors must not be called, got {method}")
+
+    rpc = BitcoinRPC(
+        "http://127.0.0.1:18443",
+        "u",
+        "p",
+        client=httpx.Client(auth=httpx.BasicAuth("u", "p"), transport=httpx.MockTransport(handler)),
+    )
+    importer = BitcoinCoreOnchainImporter(rpc, open_memory_db())
+    assert importer.import_descriptor("watch", desc) is False
+    assert calls == ["listdescriptors"]

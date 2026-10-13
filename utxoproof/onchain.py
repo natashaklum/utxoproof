@@ -45,18 +45,49 @@ class BitcoinCoreOnchainImporter:
             if "already exists" not in str(exc):
                 raise
 
-    def import_descriptor(self, wallet: str, descriptor: str, timestamp: int | str = "now") -> None:
+    WANT_RANGE: tuple[int, int] = (0, 1000)
+
+    @staticmethod
+    def encompassing_range(have: tuple[int, int] | None) -> tuple[int, int] | None:
+        """Range to import given the stored one (None = already covered, skip).
+
+        Core rejects re-imports whose range does not include the stored range,
+        so re-runs must widen, never narrow.
+        """
+        want_begin, want_end = BitcoinCoreOnchainImporter.WANT_RANGE
+        if have is None:
+            return (want_begin, want_end)
+        if have[0] <= want_begin and have[1] >= want_end:
+            return None
+        return (min(have[0], want_begin), max(have[1], want_end))
+
+    def import_descriptor(self, wallet: str, descriptor: str, timestamp: int | str = "now") -> bool:
         """Import one ranged descriptor without rescan orchestration (Sprint 3).
 
+        Idempotent across re-runs: an already-covered descriptor is skipped,
+        a narrower stored range is widened. Returns True when imported.
         Appends the Core-required `#checksum` suffix when absent.
         """
+        core = with_checksum(descriptor).split("#")[0]
+        have: tuple[int, int] | None = None
+        try:
+            for entry in self._rpc.listdescriptors(wallet):
+                if str(entry.get("desc", "")).split("#")[0] != core:
+                    continue
+                stored = entry.get("range") or [0, 0]
+                have = (int(stored[0]), int(stored[1]))
+        except BitcoinRPCError:
+            have = None  # old node or fresh wallet: fall back to plain import
+        want = self.encompassing_range(have)
+        if want is None:
+            return False
         results = self._rpc.import_descriptors(
             wallet,
             [
                 {
                     "desc": with_checksum(descriptor),
                     "timestamp": timestamp,
-                    "range": [0, 1000],
+                    "range": [want[0], want[1]],
                     "active": False,
                 }
             ],
@@ -64,6 +95,7 @@ class BitcoinCoreOnchainImporter:
         failures = [r for r in results if not r.get("success")]
         if failures:
             raise BitcoinRPCError(f"importdescriptors rejected {descriptor}: {failures}")
+        return True
 
     # -- sync ------------------------------------------------------------
 
