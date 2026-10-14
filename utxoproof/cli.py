@@ -823,7 +823,12 @@ def _open_db(path: str) -> sqlite3.Connection:
     return db
 
 
-def _write_full_from_args(args: argparse.Namespace, communal: Decimal, config: Config) -> Path:
+def _write_full_from_args(
+    args: argparse.Namespace,
+    communal: Decimal,
+    config: Config,
+    tax_years: list[int] | None = None,
+) -> Path:
     """Compose fullreport.html from report args (db + oracle/constant curve)."""
     from utxoproof.reports import write_full_report
 
@@ -886,6 +891,7 @@ def _write_full_from_args(args: argparse.Namespace, communal: Decimal, config: C
         price_history_svg=price_history_svg,
         funding=funding_matches,
         site_root=getattr(args, "site_root", None),
+        tax_years=tax_years,
     )
 
 
@@ -1409,7 +1415,11 @@ def _run_import(args: argparse.Namespace) -> int:
 
 
 def _run_report_year(
-    args: argparse.Namespace, config: Config, communal: Decimal, history: PriceAt | None
+    args: argparse.Namespace,
+    config: Config,
+    communal: Decimal,
+    history: PriceAt | None,
+    tax_years: list[int] | None = None,
 ) -> int:
     """Single-year report bundle: report.html, optional full report, evidence ZIP."""
     from utxoproof.evidence import build_manifest_db, produce_evidence_zip, record_source
@@ -1423,10 +1433,11 @@ def _run_report_year(
         config.classifier,
         price_at=history,
         site_root=getattr(args, "site_root", None),
+        tax_years=tax_years,
     )
     print(f"wrote {target}")
     if args.full:
-        print(f"wrote {_write_full_from_args(args, communal, config)}")
+        print(f"wrote {_write_full_from_args(args, communal, config, tax_years)}")
     if not args.no_zip:
         manifest_db_path = Path(args.out) / "evidence-manifest.db"
         manifest_db = build_manifest_db(manifest_db_path)
@@ -1505,7 +1516,9 @@ def main(argv: list[str] | None = None) -> int:
                 year_args = argparse.Namespace(
                     **{**vars(args), "year": year, "out": str(Path(args.out) / str(year))}
                 )
-                _run_report_year(year_args, config, communal, history)
+                _run_report_year(
+                    year_args, config, communal, history, tax_years=csv_years(args.input)
+                )
             return 0
         return _run_report_year(args, config, communal, history)
     if args.command == "setup":

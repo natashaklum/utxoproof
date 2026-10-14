@@ -274,6 +274,56 @@ def test_site_nav_relativizes_marks_current_and_plans_missing(tmp_path: Path) ->
     ]
 
 
+def test_run_site_pages_lists_every_tax_year() -> None:
+    from utxoproof.reports import run_site_pages
+
+    pages = run_site_pages("/nonexistent", [2022, 2023, 2025])
+    titles = [title for title, _ in pages]
+    assert titles == [
+        "Overview",
+        "Tax 2022",
+        "Tax 2023",
+        "Tax 2025",
+        "Bank review",
+        "Status",
+        "All-time",
+    ]
+    assert run_site_pages("/nonexistent", None) == [
+        ("Overview", "portfolio/overview/overview.html"),
+        ("Bank review", "bank/bank.html"),
+        ("Status", "current-status/status.html"),
+        ("All-time", "alltime/summary.html"),
+    ]
+
+
+def test_report_all_years_nav_covers_every_year(tmp_path: Path) -> None:
+    from utxoproof.cli import main
+
+    out = tmp_path / "years"
+    assert (
+        main(
+            [
+                "report",
+                "--input",
+                str(Path(__file__).parent / "fixtures" / "manual_2023.csv"),
+                "--all-years",
+                "--no-zip",
+                "--out",
+                str(out),
+                "--site-root",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    menu_2022 = (out / "2022" / "report.html").read_text(encoding="utf-8")
+    for year in ("2022", "2023", "2024"):
+        assert f"Tax {year}" in menu_2022
+    assert "<strong>Tax 2022</strong>" in menu_2022
+    menu_2024 = (out / "2024" / "report.html").read_text(encoding="utf-8")
+    assert "<strong>Tax 2024</strong>" in menu_2024
+
+
 def test_bank_command_matches_manual_with_reasons(tmp_path: Path) -> None:
     import csv
 

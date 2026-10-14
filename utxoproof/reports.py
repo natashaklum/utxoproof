@@ -259,6 +259,7 @@ def write_report(
     price_at: PriceAt | None = None,
     nav: list[dict[str, object]] | None = None,
     site_root: str | Path | None = None,
+    tax_years: list[int] | None = None,
 ) -> Path:
     """Build + render + write ``report.html`` into ``out_dir``. Returns the path."""
     out = Path(out_dir)
@@ -268,18 +269,18 @@ def write_report(
         render_report(
             build_report(csv_path, year, communal_rate, classifier_cfg, price_at=price_at),
             demo_notice,
-            _resolve_nav(nav, site_root, target, year),
+            _resolve_nav(nav, site_root, target, tax_years or [year]),
         ),
         encoding="utf-8",
     )
     return target
 
 
-def run_site_pages(site_root: str | Path, tax_year: int | None) -> list[tuple[str, str]]:
+def run_site_pages(site_root: str | Path, tax_years: list[int] | None) -> list[tuple[str, str]]:
     """Nav candidates for the ``run.sh`` data-dir layout, (title, site-relative path)."""
     pages: list[tuple[str, str]] = [("Overview", "portfolio/overview/overview.html")]
-    if tax_year is not None:
-        pages.append((f"Tax {tax_year}", f"{tax_year}/report.html"))
+    for year in tax_years or []:
+        pages.append((f"Tax {year}", f"{year}/report.html"))
     pages += [
         ("Bank review", "bank/bank.html"),
         ("Status", "current-status/status.html"),
@@ -288,13 +289,18 @@ def run_site_pages(site_root: str | Path, tax_year: int | None) -> list[tuple[st
     return pages
 
 
-def latest_tax_year(site_root: str | Path) -> int | None:
-    """Newest ``<YYYY>/report.html`` under the site root, if any."""
-    years = sorted(
+def report_years(site_root: str | Path) -> list[int]:
+    """Every ``<YYYY>/report.html`` under the site root, sorted."""
+    return sorted(
         int(p.parent.name)
         for p in Path(site_root).glob("[0-9][0-9][0-9][0-9]/report.html")
         if p.parent.name.isdigit()
     )
+
+
+def latest_tax_year(site_root: str | Path) -> int | None:
+    """Newest built tax year, if any (single-link contexts like entity reviews)."""
+    years = report_years(site_root)
     return years[-1] if years else None
 
 
@@ -327,37 +333,39 @@ def site_nav(
 
 
 def nav_for_run_layout(
-    site_root: str | Path | None, page_file: str | Path, tax_year: int | None = None
+    site_root: str | Path | None, page_file: str | Path, tax_years: list[int] | None = None
 ) -> list[dict[str, object]]:
-    """Nav for a page in the ``run.sh`` layout (empty without a site root)."""
+    """Nav for a page in the ``run.sh`` layout (empty without a site root).
+
+    ``tax_years`` lists every built year explicitly (report pages know their
+    input); otherwise the built year dirs on disk are used.
+    """
     if site_root is None:
         return []
-    year = tax_year if tax_year is not None else latest_tax_year(site_root)
-    return site_nav(run_site_pages(site_root, year), site_root, page_file)
+    years = tax_years if tax_years is not None else report_years(site_root)
+    return site_nav(run_site_pages(site_root, years), site_root, page_file)
 
 
 def _resolve_nav(
     nav: list[dict[str, object]] | None,
     site_root: str | Path | None,
     page_file: str | Path,
-    tax_year: int | None = None,
+    tax_years: list[int] | None = None,
 ) -> list[dict[str, object]]:
     """Explicit nav wins; otherwise derive from the site root; else no menu."""
     if nav is not None:
         return nav
     if site_root is None:
         return []
-    return nav_for_run_layout(site_root, page_file, tax_year)
+    return nav_for_run_layout(site_root, page_file, tax_years)
 
 
 def overview_related(
-    site_root: str | Path, overview_file: str | Path, tax_year: int | None = None
+    site_root: str | Path, overview_file: str | Path, tax_years: list[int] | None = None
 ) -> list[dict[str, str]]:
     """Related-reports links for the overview hub (planned canonical set)."""
-    year = tax_year if tax_year is not None else latest_tax_year(site_root)
-    candidates: list[tuple[str, str]] = []
-    if year is not None:
-        candidates.append((f"Tax report {year}", f"{year}/report.html"))
+    years = tax_years if tax_years is not None else report_years(site_root)
+    candidates: list[tuple[str, str]] = [(f"Tax report {y}", f"{y}/report.html") for y in years]
     candidates += [
         ("Bank review", "bank/bank.html"),
         ("Holdings status", "current-status/status.html"),
@@ -1155,6 +1163,7 @@ def write_full_report(
     funding: dict[str, str] | None = None,
     nav: list[dict[str, object]] | None = None,
     site_root: str | Path | None = None,
+    tax_years: list[int] | None = None,
 ) -> Path:
     """Compose every section into one printable ``fullreport.html``."""
     from utxoproof.advisory import analyze_wallet
@@ -1223,7 +1232,7 @@ def write_full_report(
             overview_intro=INTROS["overview"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
-            nav=_resolve_nav(nav, site_root, target),
+            nav=_resolve_nav(nav, site_root, target, tax_years),
         ),
         encoding="utf-8",
     )

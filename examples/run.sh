@@ -276,7 +276,7 @@ stage_alltime() {
 # ---------------------------------------------------------------------------
 case "$MODE" in
     prepare)
-        log "mode: prepare (halts if check reports shortfalls)"
+        log "mode: prepare (halts if check reports shortfalls); years: ${TAX_YEAR:-all in manual.csv}"
         stage_import
         shortfalls=$(stage_check)
         case "$shortfalls" in
@@ -298,7 +298,7 @@ case "$MODE" in
         stage_bank
         ;;
     refresh)
-        log "mode: refresh (idempotent rerun; shortfalls print but do not stop)"
+        log "mode: refresh (idempotent rerun; shortfalls print but do not stop); years: ${TAX_YEAR:-all in manual.csv}"
         stage_import
         stage_check || true   # always prints; never aborts
         stage_compute

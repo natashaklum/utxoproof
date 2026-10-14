@@ -129,7 +129,14 @@ filing year only. Folders are created per data year; year dirs left behind by
 older runs are never auto-deleted, so a stale `2022/` just means an earlier
 run covered 2022. The same works granularly: `compute --all-years` prints the
 per-year table and `report --all-years --out DIR` writes `DIR/<year>/`
-bundles; `--year`/`--alltime` keep their single-shot behavior.
+bundles; `--year`/`--alltime` keep their single-shot behavior. Every page
+menu lists every built year (`Tax 2022 · Tax 2023 · …`, current marked), so
+per-year reports link to each other instead of stranding all but the latest.
+
+Caveat: an *exported* `TAX_YEAR` shadows the default for every later run in
+that shell — `unset TAX_YEAR` (or `export TAX_YEAR=`) to get all-years back.
+Both modes log the effective setting at startup (`years: all in manual.csv`
+vs `years: 2023`), so a single-year run never happens silently.
 
 `MODE=prepare` (the default) **stops** when `check` reports shortfalls — first
 runs deserve interrogation, not momentum. If the gaps are understood and you
