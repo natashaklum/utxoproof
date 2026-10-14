@@ -5,6 +5,18 @@
 {% if demo_notice %}<div class="demo-banner">{{ demo_notice }}</div>{% endif %}
 <p>{{ intro }}</p>
 
+<h2>Review progress</h2>
+<div class="charts">
+  <div class="donut-block">{{ review_donut | safe }}
+    <ul class="legend">
+      {% for item in review_legend %}
+      <li><span class="dot" style="background:{{ item.color }}"></span>{{ item.label }} — {{ item.value }} EUR</li>
+      {% endfor %}
+    </ul>
+    <p class="sub">Statement value matched to exchange trades (EUR)</p>
+  </div>
+</div>
+
 <h2>Statement rows</h2>
 <table>
   <tr><th>Date</th><th>Description</th><th>Amount (EUR)</th><th>Counterparty</th><th>Reference</th></tr>

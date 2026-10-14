@@ -22,9 +22,31 @@ def _portfolio() -> Portfolio:
             Entity("bank", "bank", "ING savings", ""),
         ],
         utxos=[
-            UtxoHolding("cold", "A", 0, Decimal("2"), Decimal("80000"), "kyc", Decimal("40000")),
             UtxoHolding(
-                "cold", "C", 1, Decimal("0.5"), Decimal("20000"), "mixed", Decimal("12500")
+                "cold",
+                "A",
+                0,
+                Decimal("2"),
+                Decimal("80000"),
+                "kyc",
+                Decimal("40000"),
+                "",
+                ("buy-and-hold", "exchange"),
+                "buy-and-hold",
+                "exchange",
+            ),
+            UtxoHolding(
+                "cold",
+                "C",
+                1,
+                Decimal("0.5"),
+                Decimal("20000"),
+                "mixed",
+                Decimal("12500"),
+                "",
+                ("accumulating", "exchange", "mixed"),
+                "accumulating",
+                "exchange",
             ),
         ],
         fiat=[FiatHolding("bank", Decimal("12500"), "buffer")],
@@ -276,3 +298,85 @@ def test_entity_review_link_renders(tmp_path: Path) -> None:
     assert "Review:" in bank and "../../bank/bank.html" in bank
     cold = (tmp_path / "cold.html").read_text(encoding="utf-8")
     assert "Review:" not in cold
+
+
+def test_behavior_and_channel_splits_sum_to_total() -> None:
+    from utxoproof.portfolio import Entity, UtxoHolding
+
+    portfolio = Portfolio(
+        entities=[Entity("w", "wallet", "W")],
+        utxos=[
+            UtxoHolding(
+                "w",
+                "a",
+                0,
+                Decimal("1"),
+                Decimal("40000"),
+                "kyc",
+                Decimal("0"),
+                "",
+                (),
+                "buy-and-hold",
+                "exchange",
+            ),
+            UtxoHolding(
+                "w",
+                "b",
+                0,
+                Decimal("1"),
+                Decimal("20000"),
+                "kyc",
+                Decimal("0"),
+                "",
+                (),
+                "speculation",
+                "exchange",
+            ),
+        ],
+        current_price_eur=Decimal("40000"),
+    )
+    assert portfolio.behavior_split() == [
+        ("speculation", Decimal("20000")),
+        ("buy-and-hold", Decimal("40000")),
+    ]
+    assert portfolio.channel_split() == [("exchange", Decimal("60000"))]
+    assert sum(v for _, v in portfolio.behavior_split()) == portfolio.btc_value_eur
+
+
+def test_portfolio_from_db_tags_holdings(tmp_path: Path) -> None:
+    import datetime
+
+    from utxoproof.kyc import create_sample_graph
+    from utxoproof.portfolio import Entity, portfolio_from_db
+
+    db = create_sample_graph()
+    entities = [Entity("w", "wallet", "W", wallet="w", tags=("bank-transfer",))]
+    portfolio, _ = portfolio_from_db(
+        db,
+        entities,
+        [],
+        "w",
+        lambda _d: Decimal("20000"),
+        Decimal("40000"),
+        datetime.date(2024, 6, 1),
+        {"D:0": ("cash",)},
+    )
+    assert portfolio.utxos, "sample graph must yield holdings"
+    for u in portfolio.utxos:
+        assert u.behavior in ("speculation", "buy-and-hold", "accumulating")
+        assert u.channel in ("bank-transfer", "exchange", "mining", "unknown")
+        assert "bank-transfer" in u.tags  # entity inheritance
+    d0 = next(u for u in portfolio.utxos if (u.txid, u.vout) == ("D", 0))
+    assert "cash" in d0.tags  # per-UTXO override
+    assert d0.channel == "bank-transfer"  # asserted channel wins the bucket
+
+
+def test_overview_renders_behavior_and_channel_donuts(tmp_path: Path) -> None:
+    from utxoproof.reports import write_overview_page
+
+    target = write_overview_page(_portfolio(), "2024-06-01", "test price", tmp_path, "")
+    html = target.read_text(encoding="utf-8")
+    assert "Holdings by tax behavior" in html
+    assert "Holdings by funding channel" in html
+    assert html.count("conic-gradient") >= 3  # kyc + behavior + channel
+    assert "Related reports" not in html  # omitted without siblings

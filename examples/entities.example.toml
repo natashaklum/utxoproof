@@ -60,7 +60,18 @@ note = "Dry powder"
 # kind = "bank"
 # label = "KBC checking"
 # detail = "BE12 **** 3456"
+# tags = ["bank-transfer"]
 # [[fiat]]
 # entity_id = "kbc-checking"
 # amount_eur = "0"
 # note = "KBC app balance, YYYY-MM-DD"
+#
+# Free tags: [entity_tags] assert tags per entity id, [utxo_tags] per
+# "txid:vout" ref. Entity tags are inherited by every holding of that entity;
+# UTXO tags attach to one output. Derived tags (behavior bucket, channel from
+# acquisition source, "mixed") always apply first; yours extend them. Unknown
+# entity ids abort; malformed UTXO refs abort.
+# [entity_tags]
+# ledger-savings = ["bank-transfer", "cold-storage"]
+# [utxo_tags]
+# "abc123def456:0" = ["cash", "gift"]

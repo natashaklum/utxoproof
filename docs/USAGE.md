@@ -186,6 +186,33 @@ derived. Concretely:
   outputs land in the entity whose `wallet` matches the synced wallet, or in
   the single entity when only one is declared. `utxoproof portfolio` prints
   the resulting allocation, so misassignment is visible immediately.
+- **Tags (optional):** `[entity_tags]` asserts free tags per entity id
+  (inherited by every holding of that entity), `[utxo_tags]` per
+  `"txid:vout"` ref (e.g. `"abc123:0" = ["cash", "gift"]`). Use them for what
+  only you know — how fiat entered (`bank-transfer`, `cash`, `card`), custody
+  roles (`cold-storage`), provenance notes. Derived tags always apply first
+  (behavior bucket, channel from acquisition source, `mixed`); yours extend
+  them, and an asserted channel wins its donut bucket. Unknown entities and
+  malformed refs abort like `[[fiat]]` ghosts.
+
+### Tags and tag charts: what the colors mean
+
+Every holding carries three exclusive buckets (one donut apiece on the
+overview, each summing to 100%) plus an overlapping free-tag set shown in the
+UTXO tables:
+
+| Axis | Buckets (priority order) | Source |
+|---|---|---|
+| Tax behavior | `speculation` > `buy-and-hold` (held ≥ 365 days) > `accumulating` | speculation taint flag, else holding duration |
+| Funding channel | asserted > `exchange` / `p2p` / `mining` / `transfer` / `unknown` | your tags first, else acquisition `source_type` |
+| Privacy | `kyc` / `non_kyc` / `mixed` / `unknown` + explicit `mixed` tag | KYC propagation (existing) |
+
+Honesty rails: `unknown` is a first-class slice, never folded away. The
+chain only proves *where coins arrived from* — bank vs card lives on trades
+and bank rows where the evidence is (bank-matched legs, instant-buy flow),
+or in your tags; the tool will not derive `cash` from chain data. Thresholds
+(`365` days) and palettes are fixed and documented here, not tuned per run.
+The bank page adds a matched-vs-unmatched review donut over statement euros.
 
 That writes `overview/overview.html`, `entities/<id>.html`, and
 `provenance/provenance_<txid>_<vout>.html` per unspent UTXO, so entity-page

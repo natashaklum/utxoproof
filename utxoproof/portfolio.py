@@ -28,6 +28,7 @@ class Entity:
     label: str
     detail: str = ""
     wallet: str = ""  # synced on-chain wallet whose UTXOs belong here
+    tags: tuple[str, ...] = ()  # user-asserted tags inherited by member holdings
 
 
 @dataclass
@@ -40,6 +41,9 @@ class UtxoHolding:
     kyc_status: str
     cost_eur: Decimal = Decimal("0")
     address: str = ""
+    tags: tuple[str, ...] = ()
+    behavior: str = ""  # exclusive tax-behavior bucket (see utxoproof.tags)
+    channel: str = ""  # exclusive funding-channel bucket (see utxoproof.tags)
 
 
 @dataclass
@@ -126,6 +130,24 @@ class Portfolio:
             by_status[u.kyc_status] = by_status.get(u.kyc_status, Decimal("0")) + u.eur_value
         return [(s, by_status[s]) for s in self.STATUS_ORDER if s in by_status]
 
+    def behavior_split(self) -> list[tuple[str, Decimal]]:
+        """EUR value per tax-behavior bucket in canonical order."""
+        from utxoproof.tags import BEHAVIOR_ORDER
+
+        by_bucket: dict[str, Decimal] = {}
+        for u in self.utxos:
+            by_bucket[u.behavior] = by_bucket.get(u.behavior, Decimal("0")) + u.eur_value
+        return [(b, by_bucket[b]) for b in BEHAVIOR_ORDER if b in by_bucket]
+
+    def channel_split(self) -> list[tuple[str, Decimal]]:
+        """EUR value per funding-channel bucket in canonical order."""
+        from utxoproof.tags import CHANNEL_ORDER
+
+        by_bucket: dict[str, Decimal] = {}
+        for u in self.utxos:
+            by_bucket[u.channel] = by_bucket.get(u.channel, Decimal("0")) + u.eur_value
+        return [(b, by_bucket[b]) for b in CHANNEL_ORDER if b in by_bucket]
+
 
 def _esc(text: str) -> str:
     return html.escape(text)
@@ -163,29 +185,31 @@ def svg_bars(
 
 def donut_legend(
     segments: list[tuple[str, Decimal]],
+    colors: dict[str, str] | None = None,
 ) -> list[tuple[str, str, Decimal]]:
     """(color, label, value) legend rows matching the donut ring colors."""
-    return [
-        (Portfolio.STATUS_COLORS.get(label, "#8e5bd6"), label, value) for label, value in segments
-    ]
+    palette = colors or Portfolio.STATUS_COLORS
+    return [(palette.get(label, "#8e5bd6"), label, value) for label, value in segments]
 
 
 def donut_ring(
     segments: list[tuple[str, Decimal]],
     size: int = 180,
     thickness: int = 26,
+    colors: dict[str, str] | None = None,
 ) -> str:
     """Donut ring as a conic-gradient div (no fragile 180-degree arc math).
 
     Center shows the total and the largest segment's share. Legend is
     rendered as HTML by the caller (see ``donut_legend``).
     """
+    palette = colors or Portfolio.STATUS_COLORS
     total = sum((v for _, v in segments), Decimal("0"))
     stops: list[str] = []
     pos = 0.0
     for label, value in segments:
         frac = float(value / total) if total > 0 else 0.0
-        color = Portfolio.STATUS_COLORS.get(label, "#8e5bd6")
+        color = palette.get(label, "#8e5bd6")
         stops.append(f"{color} {pos:.1f}% {pos + frac * 100:.1f}%")
         pos += frac * 100
     leader = max([float(v / total) if total > 0 else 0.0 for _, v in segments] + [0.0])
@@ -271,6 +295,7 @@ def load_entities(path: str | Path) -> tuple[list[Entity], list[FiatHolding]]:
             label=str(e.get("label", e["id"])),
             detail=str(e.get("detail", "")),
             wallet=str(e.get("wallet", "")),
+            tags=tuple(str(t) for t in e.get("tags", [])),
         )
         for e in data.get("entities", [])
     ]
@@ -299,13 +324,16 @@ def portfolio_from_db(
     price_at: Callable[[datetime.date], Decimal],
     current_price_eur: Decimal,
     as_of: datetime.date,
+    utxo_tags: dict[str, tuple[str, ...]] | None = None,
 ) -> tuple[Portfolio, list[UTXOAdvisory]]:
     """Build a ``Portfolio`` from a synced on-chain DB plus entity config.
 
     Every unspent output lands in the entity whose ``wallet`` matches the
     synced wallet (falling back to the single entity when only one is
-    declared). Returns ``(portfolio, advisories)`` — the advisories carry
-    per-UTXO cost basis, value, KYC status and flags for entity pages.
+    declared). Holdings carry generic tags (behavior + channel + mixed +
+    entity/UTXO user tags; see ``utxoproof.tags``). Returns ``(portfolio,
+    advisories)`` — the advisories carry per-UTXO cost basis, value, KYC
+    status and flags for entity pages.
     """
     from utxoproof.advisory import analyze_wallet
     from utxoproof.kyc import propagate_graph, seed_source_kyc
@@ -321,9 +349,16 @@ def portfolio_from_db(
     else:
         defaulted = [e for e in entities if not e.wallet]
         owner_id = defaulted[0].id if defaulted else entities[0].id
-    utxos = [
-        UtxoHolding(
-            owner_id,
+    from utxoproof.tags import CHANNEL_ORDER, behavior_bucket, channel_of, tags_for
+
+    by_entity = {e.id: e for e in entities}
+    utxo_tags = utxo_tags or {}
+
+    def _holding(owner: str, a: UTXOAdvisory) -> UtxoHolding:
+        user = (*by_entity[owner].tags, *utxo_tags.get(f"{a.txid}:{a.vout}", ()))
+        asserted = next((t for t in user if t in CHANNEL_ORDER), "")
+        return UtxoHolding(
+            owner,
             a.txid,
             a.vout,
             a.amount_btc,
@@ -331,9 +366,12 @@ def portfolio_from_db(
             a.kyc_status,
             a.acquisition_cost_eur,
             a.address,
+            tags_for(a, a.source_type, user),
+            behavior_bucket(a.holding_days, a.speculation_tainted),
+            channel_of(a.source_type, asserted),
         )
-        for a in advisories
-    ]
+
+    utxos = [_holding(owner_id, a) for a in advisories]
     return (
         Portfolio(
             entities=entities,

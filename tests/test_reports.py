@@ -313,3 +313,26 @@ def test_bank_command_matches_manual_with_reasons(tmp_path: Path) -> None:
     assert "match [standard]" in html or "standard" in html
     assert "direction inflow&lt;-&gt;SELL" in html
     assert "Nothing to review." in html
+
+
+def test_bank_page_review_donut(tmp_path: Path) -> None:
+    from utxoproof.banks import parse_bank_csv
+    from utxoproof.exchange import ExchangeTx
+    from utxoproof.matching import FiatMatch
+    from utxoproof.reports import write_bank_page
+
+    rows = parse_bank_csv(Path(__file__).parent / "fixtures" / "kbc_2023.csv", "kbc")
+    tx = ExchangeTx(
+        date=rows[0].date,
+        kind="SELL",
+        btc=Decimal("0.5"),
+        eur_per_btc=Decimal("22000"),
+        fee_eur=Decimal("0"),
+        refid="T9",
+    )
+    match = FiatMatch(tx, rows[0], ["date +0d"], "standard")
+    target = write_bank_page("kbc", rows, [match], [], tmp_path)
+    html = target.read_text(encoding="utf-8")
+    assert "Review progress" in html
+    assert "conic-gradient" in html
+    assert "matched" in html and "unmatched" in html

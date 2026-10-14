@@ -566,6 +566,12 @@ def build_advisory_context(
     as_of: str,
 ) -> dict[str, object]:
     """Preformatted context dict for the advisory section."""
+    from utxoproof.tags import tags_for
+
+    def _advisory_tags(a: UTXOAdvisory) -> tuple[str, ...]:
+        return tags_for(a, a.source_type)
+
+    summary = portfolio_summary(advisories)
     summary = portfolio_summary(advisories)
     return {
         "as_of": as_of,
@@ -583,6 +589,7 @@ def build_advisory_context(
                 "tax_eur": f"{a.tax_if_sold_eur:.2f}",
                 "kyc": a.kyc_status,
                 "flags": ",".join(sorted(f.value for f in a.flags)),
+                "tags": ",".join(_advisory_tags(a)),
             }
             for a in advisories
         ],
@@ -656,6 +663,12 @@ def write_bank_page(
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     target = out / "bank.html"
+    from utxoproof.portfolio import donut_legend, donut_ring
+
+    matched_eur = sum((abs(m.bank.amount_eur) for m in matches), Decimal("0"))
+    unmatched_eur = sum((abs(r.amount_eur) for r in unmatched), Decimal("0"))
+    review_split = [("matched", matched_eur), ("unmatched", unmatched_eur)]
+    review_colors = {"matched": "#3faf6e", "unmatched": "#e8a13d"}
     target.write_text(
         _env()
         .get_template("bank.html.j2")
@@ -696,6 +709,11 @@ def write_bank_page(
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
             nav=_resolve_nav(nav, site_root, target),
+            review_donut=donut_ring(review_split, colors=review_colors),
+            review_legend=[
+                {"color": color, "label": label, "value": f"{value:,.2f}"}
+                for color, label, value in donut_legend(review_split, review_colors)
+            ],
         ),
         encoding="utf-8",
     )
@@ -934,7 +952,10 @@ def build_overview_context(
 ) -> dict[str, object]:
     """Preformatted context dict for the overview section."""
     from utxoproof.portfolio import donut_legend, donut_ring, svg_bars
+    from utxoproof.tags import BEHAVIOR_COLORS, CHANNEL_COLORS
 
+    behavior_split = portfolio.behavior_split()
+    channel_split = portfolio.channel_split()
     return {
         "as_of": as_of,
         "current_price_eur": f"{portfolio.current_price_eur:.2f}",
@@ -958,6 +979,16 @@ def build_overview_context(
         "kyc_legend": [
             {"color": color, "label": label, "value": f"{value:,.0f}"}
             for color, label, value in donut_legend(portfolio.kyc_split())
+        ],
+        "behavior_donut": donut_ring(behavior_split, colors=BEHAVIOR_COLORS),
+        "behavior_legend": [
+            {"color": color, "label": label, "value": f"{value:,.0f}"}
+            for color, label, value in donut_legend(behavior_split, BEHAVIOR_COLORS)
+        ],
+        "channel_donut": donut_ring(channel_split, colors=CHANNEL_COLORS),
+        "channel_legend": [
+            {"color": color, "label": label, "value": f"{value:,.0f}"}
+            for color, label, value in donut_legend(channel_split, CHANNEL_COLORS)
         ],
         "price_history_svg": price_history_svg,
         "reports": list(reports or []),
@@ -1047,6 +1078,7 @@ def build_entity_context(
                 "value": f"{u.eur_value:,.2f}",
                 "kyc": u.kyc_status,
                 "flags": (flags_by_utxo or {}).get(f"{u.txid}:{u.vout}", ""),
+                "tags": ",".join(u.tags),
             }
             for u in utxos
         ],

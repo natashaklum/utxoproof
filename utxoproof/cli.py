@@ -850,8 +850,11 @@ def _write_full_from_args(args: argparse.Namespace, communal: Decimal, config: C
         from utxoproof.price_oracle import bundled_history_path
 
         entities, fiat = load_entities(args.entities)
+        from utxoproof.tags import load_tag_config
+
+        _, full_utxo_tags = load_tag_config(args.entities)
         portfolio, _advisories = portfolio_from_db(
-            db, entities, fiat, args.wallet, history, price, as_of
+            db, entities, fiat, args.wallet, history, price, as_of, full_utxo_tags
         )
         price_history_svg = svg_sparkline(
             load_price_series(bundled_history_path()),
@@ -1096,6 +1099,9 @@ def _run_portfolio(args: argparse.Namespace) -> int:
 
     db = _open_db(str(db_path(args)))
     entities, fiat = load_entities(args.entities)
+    from utxoproof.tags import load_tag_config
+
+    _, utxo_tags = load_tag_config(args.entities)
     as_of = (
         datetime.date.fromisoformat(args.as_of)
         if args.as_of
@@ -1130,7 +1136,9 @@ def _run_portfolio(args: argparse.Namespace) -> int:
         print(f"ambiguous funding: {line} — left unlabeled")
     for line in funding.unmatched:
         print(f"unmatched withdrawal: {line} — no chain receive in window")
-    portfolio, advisories = portfolio_from_db(db, entities, fiat, args.wallet, curve, price, as_of)
+    portfolio, advisories = portfolio_from_db(
+        db, entities, fiat, args.wallet, curve, price, as_of, utxo_tags
+    )
     print(f"utxos: {len(portfolio.utxos)} btc={portfolio.btc_total:.8f}")
     for eid, label, value, share in portfolio.allocation():
         print(f"entity {eid} ({label}): {value:,.2f} EUR ({share:.1f}%)")

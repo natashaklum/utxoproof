@@ -91,7 +91,9 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   charts — no JavaScript). Overview -> entity pages -> provenance pages;
   chart HTML is trusted generator output (`| safe` in templates, everything
   else stays autoescaped). KYC colors are fixed per status (canonical order);
-  entity bars use dominant-KYC color.
+  entity bars use dominant-KYC color. Tag model in `utxoproof/tags.py`
+  (behavior/channel axes + user tags from entities.toml); donuts take explicit
+  palettes, one donut per exclusive axis; bank page has a matched/unmatched donut.
 - Price history: `utxoproof/data/btc_eur_daily.csv` (2010-08-18 first real print ->
   now; Kraken native, blockchain.info x ECB before) and
   `utxoproof/data/usd_eur_daily.csv` (ECB 1999 -> now), plus raw upstream
