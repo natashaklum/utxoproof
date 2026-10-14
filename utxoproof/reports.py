@@ -366,8 +366,7 @@ def overview_related(
     root = Path(site_root)
     parent = Path(overview_file).parent
     return [
-        {"title": title, "href": os.path.relpath(root / rel, parent)}
-        for title, rel in candidates
+        {"title": title, "href": os.path.relpath(root / rel, parent)} for title, rel in candidates
     ]
 
 
@@ -647,9 +646,7 @@ def write_bank_page(
         href = ""
         if provenance_dir is not None:
             for vout in range(32):
-                candidate = (
-                    Path(provenance_dir) / f"provenance_{match.chain_txid}_{vout}.html"
-                )
+                candidate = Path(provenance_dir) / f"provenance_{match.chain_txid}_{vout}.html"
                 if candidate.is_file():
                     href = os.path.relpath(candidate, Path(out_dir))
                     break
@@ -676,9 +673,7 @@ def write_bank_page(
             ],
             matches=[
                 {
-                    "trade": (
-                        f"{m.tx.date.isoformat()} {m.tx.kind} {m.tx.btc} BTC"
-                    ),
+                    "trade": (f"{m.tx.date.isoformat()} {m.tx.kind} {m.tx.btc} BTC"),
                     "trade_fiat": f"{m.tx.fiat_amount:,.2f}",
                     "tier": m.tier,
                     "reasons": "; ".join(m.reasons),

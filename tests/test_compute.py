@@ -42,3 +42,30 @@ def test_margin_sell_on_empty_inventory_names_cause() -> None:
     fixture = Path(__file__).parent / "fixtures" / "margin_short.csv"
     with pytest.raises(ValueError, match=r"MARGIN.*empty inventory.*short sale"):
         compute_year(fixture, 2021, strict=True)
+
+
+def test_csv_years_lists_data_years_only() -> None:
+    from utxoproof.cli import csv_years
+
+    assert csv_years(FIXTURE) == [2022, 2023, 2024]
+
+
+def test_compute_all_years_prints_per_year_table(capsys) -> None:
+    from utxoproof.cli import main
+
+    assert main(["compute", "--input", str(FIXTURE), "--all-years"]) == 0
+    out = capsys.readouterr().out
+    assert "year: 2022 gain_loss_eur: 0.00" in out
+    assert "year: 2023 gain_loss_eur: 4337.67" in out
+    assert "total_gain_loss_eur:" in out
+
+
+def test_compute_year_flags_are_mutually_exclusive() -> None:
+    import pytest
+
+    from utxoproof.cli import main
+
+    with pytest.raises(SystemExit):
+        main(["compute", "--input", str(FIXTURE), "--year", "2023", "--all-years"])
+    with pytest.raises(SystemExit):
+        main(["compute", "--input", str(FIXTURE)])

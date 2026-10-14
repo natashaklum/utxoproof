@@ -118,8 +118,18 @@ plus `UTXOPROOF_BIN` to point at your install):
 cp examples/run.sh ~/utxoproof-data/run.sh
 $EDITOR ~/utxoproof-data/run.sh   # set KRAKEN_LEDGERS etc.
 bash ~/utxoproof-data/run.sh      # prepare: import -> check -> compute -> report
+TAX_YEAR=2023 bash ~/utxoproof-data/run.sh   # one filing year only
 MODE=refresh bash ~/utxoproof-data/run.sh   # repeatable: refresh + alltime
 ```
+
+`TAX_YEAR` empty (the default) covers every year present in `manual.csv` —
+one `compute` row and one `<year>/report.html` + evidence ZIP each, plus the
+single `status` snapshot and `alltime` summary. Set `TAX_YEAR=2023` for one
+filing year only. Folders are created per data year; year dirs left behind by
+older runs are never auto-deleted, so a stale `2022/` just means an earlier
+run covered 2022. The same works granularly: `compute --all-years` prints the
+per-year table and `report --all-years --out DIR` writes `DIR/<year>/`
+bundles; `--year`/`--alltime` keep their single-shot behavior.
 
 `MODE=prepare` (the default) **stops** when `check` reports shortfalls — first
 runs deserve interrogation, not momentum. If the gaps are understood and you

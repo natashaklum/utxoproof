@@ -121,3 +121,36 @@ def test_report_cli_zip_and_alltime(tmp_path: Path) -> None:
         == 0
     )
     assert list(out_nozip.glob("*.zip")) == []
+
+
+def test_report_all_years_writes_per_year_dirs(tmp_path: Path) -> None:
+    out = tmp_path / "years"
+    assert (
+        main(
+            [
+                "report",
+                "--input",
+                str(FIXTURE),
+                "--all-years",
+                "--source",
+                str(KRAKEN),
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    for year in ("2022", "2023", "2024"):
+        assert (out / year / "report.html").is_file()
+        assert len(list((out / year).glob(f"utxoproof_evidence_{year}_*.zip"))) == 1
+
+
+def test_report_year_flags_are_mutually_exclusive() -> None:
+    import pytest
+
+    from utxoproof.cli import main
+
+    with pytest.raises(SystemExit):
+        main(["report", "--input", str(FIXTURE), "--year", "2023", "--alltime", "--out", "x"])
+    with pytest.raises(SystemExit):
+        main(["report", "--input", str(FIXTURE), "--out", "x"])

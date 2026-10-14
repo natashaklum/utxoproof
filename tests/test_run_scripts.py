@@ -60,6 +60,28 @@ def test_refresh_end_to_end(tmp_path: Path) -> None:
     assert (data / "alltime" / "summary.html").is_file()
 
 
+def test_refresh_covers_every_data_year_by_default(tmp_path: Path) -> None:
+    from utxoproof.cli import csv_years
+
+    data = tmp_path / "data"
+    proc = _run(
+        "run.sh",
+        {
+            "DATA_DIR": str(data),
+            "KRAKEN_LEDGERS": str(FIXTURES / "kraken_ledgers_2023.csv"),
+            "KRAKEN_TRADES": "",
+            "TAX_YEAR": "",
+            "BTC_PRICE": "40000",
+            "MODE": "refresh",
+        },
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    years = csv_years(data / "manual.csv")
+    assert len(years) >= 1
+    for year in years:
+        assert (data / str(year) / "report.html").is_file()
+
+
 def test_prepare_aborts_on_shortfalls(tmp_path: Path) -> None:
     ledgers = tmp_path / "ledgers.csv"
     _shortfall_ledgers(ledgers)

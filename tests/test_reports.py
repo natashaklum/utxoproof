@@ -281,9 +281,7 @@ def test_bank_command_matches_manual_with_reasons(tmp_path: Path) -> None:
 
     manual = tmp_path / "manual.csv"
     with open(manual, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(
-            f, fieldnames=["date", "side", "btc", "eur_per_btc", "fee_eur"]
-        )
+        writer = csv.DictWriter(f, fieldnames=["date", "side", "btc", "eur_per_btc", "fee_eur"])
         writer.writeheader()
         writer.writerow(
             {

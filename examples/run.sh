@@ -16,9 +16,9 @@
 #
 #   cp examples/run.sh ~/utxoproof-data/run.sh
 #   $EDITOR ~/utxoproof-data/run.sh     # set your paths/flags
-#   bash ~/utxoproof-data/run.sh          # prepare mode
-#   TAX_YEAR=2023 bash ~/utxoproof-data/run.sh   # filing year in prepare mode
-#   bash ~/utxoproof-data/run.sh            # refresh mode
+#   bash ~/utxoproof-data/run.sh          # prepare mode, every year in the file
+#   TAX_YEAR=2023 bash ~/utxoproof-data/run.sh   # one filing year only
+#   MODE=refresh bash ~/utxoproof-data/run.sh    # idempotent rerun
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
@@ -29,7 +29,7 @@ set -euo pipefail
 : "${KRAKEN_TRADES:=}"            # empty skips trades join
 : "${BANK_CSV:=}"                 # e.g. "$HOME/exports/kbc.csv"; empty skips bank review
 : "${BANK_TYPE:=kbc}"             # ing | kbc | bnp | belfius | argenta
-: "${TAX_YEAR:=$(date +%Y)}"
+: "${TAX_YEAR:=}"                 # empty = every year present in manual.csv
 : "${BTC_PRICE:=}"                # empty = bundled history close for status
 : "${CONFIG_FILE:=}"              # e.g. "$DATA_DIR/utxoproof.toml"
 : "${XPUB:=}"                     # account xpub/ypub/zpub; empty skips on-chain stages
@@ -114,9 +114,20 @@ stage_check() {
 # ---------------------------------------------------------------------------
 # Stage: compute
 # ---------------------------------------------------------------------------
+tax_years() {
+    # Distinct years from manual.csv's ISO date column (always first).
+    awk -F, 'NR>1 && $1 ~ /^[0-9][0-9][0-9][0-9]-/ {print substr($1, 1, 4)}' \
+        "$DATA_DIR/manual.csv" | sort -nu
+}
+
 stage_compute() {
-    log "compute: year $TAX_YEAR"
-    "$UTXOPROOF_BIN" compute --input "$DATA_DIR/manual.csv" --year "$TAX_YEAR"
+    if [ -n "$TAX_YEAR" ]; then
+        log "compute: year $TAX_YEAR"
+        "$UTXOPROOF_BIN" compute --input "$DATA_DIR/manual.csv" --year "$TAX_YEAR"
+    else
+        log "compute: every year in manual.csv"
+        "$UTXOPROOF_BIN" compute --input "$DATA_DIR/manual.csv" --all-years
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -198,21 +209,42 @@ stage_portfolio() {
 # Stage: report (HTML tax report + evidence ZIP)
 # ---------------------------------------------------------------------------
 stage_report() {
-    log "report: year $TAX_YEAR + evidence ZIP"
-    if [ -n "$CONFIG_FILE" ]; then
-        "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --year "$TAX_YEAR" \
-            --config "$CONFIG_FILE" --source "$KRAKEN_LEDGERS" \
-            ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
-            ${BANK_CSV:+--source "$BANK_CSV"} \
-            --site-root "$DATA_DIR" \
-            --out "$DATA_DIR/$TAX_YEAR"
+    # Year selection doubles the branches below on purpose: arrays + set -u
+    # crash old bash (macOS ships 3.2), unquoted strings trip shellcheck.
+    if [ -n "$TAX_YEAR" ]; then
+        log "report: year $TAX_YEAR + evidence ZIP"
+        if [ -n "$CONFIG_FILE" ]; then
+            "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --year "$TAX_YEAR" \
+                --config "$CONFIG_FILE" --source "$KRAKEN_LEDGERS" \
+                ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
+                ${BANK_CSV:+--source "$BANK_CSV"} \
+                --site-root "$DATA_DIR" \
+                --out "$DATA_DIR/$TAX_YEAR"
+        else
+            "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --year "$TAX_YEAR" \
+                --source "$KRAKEN_LEDGERS" \
+                ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
+                ${BANK_CSV:+--source "$BANK_CSV"} \
+                --site-root "$DATA_DIR" \
+                --out "$DATA_DIR/$TAX_YEAR"
+        fi
     else
-        "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --year "$TAX_YEAR" \
-            --source "$KRAKEN_LEDGERS" \
-            ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
-            ${BANK_CSV:+--source "$BANK_CSV"} \
-            --site-root "$DATA_DIR" \
-            --out "$DATA_DIR/$TAX_YEAR"
+        log "report: every year in manual.csv + evidence ZIPs"
+        if [ -n "$CONFIG_FILE" ]; then
+            "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --all-years \
+                --config "$CONFIG_FILE" --source "$KRAKEN_LEDGERS" \
+                ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
+                ${BANK_CSV:+--source "$BANK_CSV"} \
+                --site-root "$DATA_DIR" \
+                --out "$DATA_DIR"
+        else
+            "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --all-years \
+                --source "$KRAKEN_LEDGERS" \
+                ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
+                ${BANK_CSV:+--source "$BANK_CSV"} \
+                --site-root "$DATA_DIR" \
+                --out "$DATA_DIR"
+        fi
     fi
 }
 

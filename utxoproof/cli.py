@@ -121,6 +121,23 @@ def _apply_withdrawal(
     return Decimal("0"), Decimal("0")
 
 
+def csv_years(csv_path: str | Path) -> list[int]:
+    """Distinct years present in a manual CSV's date column, sorted.
+
+    Drives ``--all-years`` loops so every run covers exactly the years in the
+    data — no hardcoded start year, no empty-year reports.
+    """
+    import csv
+
+    years = set()
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            date = str(row.get("date") or "")
+            if len(date) >= 4 and date[:4].isdigit():
+                years.add(int(date[:4]))
+    return sorted(years)
+
+
 def compute_details(
     csv_path: str | Path,
     year: int,
@@ -606,7 +623,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     compute = sub.add_parser("compute", help="Sprint 0 gain/loss + Belgian tax check")
     compute.add_argument("--input", required=True, help="Manual CSV path")
-    compute.add_argument("--year", required=True, type=int, help="Tax year, e.g. 2023")
+    year_group = compute.add_mutually_exclusive_group(required=True)
+    year_group.add_argument("--year", type=int, default=None, help="Tax year, e.g. 2023")
+    year_group.add_argument(
+        "--all-years", action="store_true", help="One gain/loss row per year in the file"
+    )
     compute.add_argument(
         "--communal-rate",
         default=COMMUNAL_SURCHARGE_DEFAULT,
@@ -651,8 +672,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     report = sub.add_parser("report", help="Generate an HTML tax report")
     report.add_argument("--input", required=True, help="Manual CSV path")
-    report.add_argument("--year", type=int, default=None, help="Tax year, e.g. 2023")
-    report.add_argument("--alltime", action="store_true", help="All-time summary instead")
+    report_year_group = report.add_mutually_exclusive_group(required=True)
+    report_year_group.add_argument("--year", type=int, default=None, help="Tax year, e.g. 2023")
+    report_year_group.add_argument(
+        "--all-years",
+        action="store_true",
+        help="One report per year in the file, under --out/<year>/",
+    )
+    report_year_group.add_argument(
+        "--alltime", action="store_true", help="All-time summary instead"
+    )
     report.add_argument("--out", required=True, help="Output directory")
     report.add_argument("--config", default=None, help="utxoproof.toml path")
     _add_price_history_arg(report)
@@ -968,7 +997,11 @@ def _run_status(args: argparse.Namespace) -> int:
     print(f"unrealized_eur: {status['unrealized_eur']:.2f}")
     if args.out:
         target = write_status_page(
-            args.input, price, note, args.out, price_at=history,
+            args.input,
+            price,
+            note,
+            args.out,
+            price_at=history,
             site_root=getattr(args, "site_root", None),
         )
         print(f"wrote {target}")
@@ -1018,7 +1051,11 @@ def _run_advise(args: argparse.Namespace) -> int:
     print(f"liquidate_tax_eur: {summary['total_tax_eur']:.2f}")
     if args.out:
         target = write_advisory_page(
-            advisories, price, note, as_of.isoformat(), args.out,
+            advisories,
+            price,
+            note,
+            as_of.isoformat(),
+            args.out,
             site_root=getattr(args, "site_root", None),
         )
         print(f"wrote {target}")
@@ -1363,10 +1400,64 @@ def _run_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_report_year(
+    args: argparse.Namespace, config: Config, communal: Decimal, history: PriceAt | None
+) -> int:
+    """Single-year report bundle: report.html, optional full report, evidence ZIP."""
+    from utxoproof.evidence import build_manifest_db, produce_evidence_zip, record_source
+    from utxoproof.reports import write_report
+
+    target = write_report(
+        args.input,
+        args.year,
+        args.out,
+        communal,
+        config.classifier,
+        price_at=history,
+        site_root=getattr(args, "site_root", None),
+    )
+    print(f"wrote {target}")
+    if args.full:
+        print(f"wrote {_write_full_from_args(args, communal, config)}")
+    if not args.no_zip:
+        manifest_db_path = Path(args.out) / "evidence-manifest.db"
+        manifest_db = build_manifest_db(manifest_db_path)
+        for source in [args.input, *args.source]:
+            record_source(manifest_db, source, "source")
+        year_dir = evidence_root(args) / str(args.year)
+        attached = sorted(year_dir.glob("*")) if year_dir.is_dir() else []
+        for file in attached:
+            if file.is_file():
+                record_source(manifest_db, file, "attachment", name=f"{args.year}/{file.name}")
+        manifest_db.close()
+        zip_path = produce_evidence_zip(
+            args.year,
+            manifest_db_path,
+            target,
+            [Path(s) for s in args.source],
+            [Path(args.input)],
+            args.out,
+            attachments=attached,
+        )
+        print(f"wrote {zip_path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "compute":
-        result = compute_year(args.input, args.year, load_price_history(args.price_history))
+        history = load_price_history(args.price_history)
+        if args.all_years:
+            total = Decimal("0")
+            for year in csv_years(args.input):
+                result = compute_year(args.input, year, history)
+                gain = result["gain_loss_eur"]
+                tax = apply_belgian_tax(gain, "goede_huisvader", args.communal_rate)
+                print(f"year: {year} gain_loss_eur: {gain:.2f} tax_eur: {tax['tax_eur']:.2f}")
+                total += gain
+            print(f"total_gain_loss_eur: {total:.2f}")
+            return 0
+        result = compute_year(args.input, args.year, history)
         gain = result["gain_loss_eur"]
         tax = apply_belgian_tax(gain, "goede_huisvader", args.communal_rate)
         print(f"year: {args.year}")
@@ -1383,8 +1474,7 @@ def main(argv: list[str] | None = None) -> int:
         return _run_import(args)
     if args.command == "report":
         from utxoproof.config import load_config
-        from utxoproof.evidence import build_manifest_db, produce_evidence_zip, record_source
-        from utxoproof.reports import write_alltime_page, write_report
+        from utxoproof.reports import write_alltime_page
 
         config = load_config(args.config)
         communal = (
@@ -1395,48 +1485,21 @@ def main(argv: list[str] | None = None) -> int:
         history = load_price_history(args.price_history)
         if args.alltime:
             target = write_alltime_page(
-                args.input, args.out, price_at=history,
+                args.input,
+                args.out,
+                price_at=history,
                 site_root=getattr(args, "site_root", None),
             )
             print(f"wrote {target}")
             return 0
-        if args.year is None:
-            raise ValueError("report needs --year Y or --alltime")
-        target = write_report(
-            args.input,
-            args.year,
-            args.out,
-            communal,
-            config.classifier,
-            price_at=load_price_history(args.price_history),
-            site_root=getattr(args, "site_root", None),
-        )
-        print(f"wrote {target}")
-        if args.full:
-            full = _write_full_from_args(args, communal, config)
-            print(f"wrote {full}")
-        if not args.no_zip:
-            manifest_db_path = Path(args.out) / "evidence-manifest.db"
-            manifest_db = build_manifest_db(manifest_db_path)
-            for source in [args.input, *args.source]:
-                record_source(manifest_db, source, "source")
-            year_dir = evidence_root(args) / str(args.year)
-            attached = sorted(year_dir.glob("*")) if year_dir.is_dir() else []
-            for file in attached:
-                if file.is_file():
-                    record_source(manifest_db, file, "attachment", name=f"{args.year}/{file.name}")
-            manifest_db.close()
-            zip_path = produce_evidence_zip(
-                args.year,
-                manifest_db_path,
-                target,
-                [Path(s) for s in args.source],
-                [Path(args.input)],
-                args.out,
-                attachments=attached,
-            )
-            print(f"wrote {zip_path}")
-        return 0
+        if args.all_years:
+            for year in csv_years(args.input):
+                year_args = argparse.Namespace(
+                    **{**vars(args), "year": year, "out": str(Path(args.out) / str(year))}
+                )
+                _run_report_year(year_args, config, communal, history)
+            return 0
+        return _run_report_year(args, config, communal, history)
     if args.command == "setup":
         return _run_setup(args)
     if args.command == "sync":

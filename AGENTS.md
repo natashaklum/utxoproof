@@ -76,7 +76,7 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   `~/.utxoproof`); `--db`/`--evidence-dir` override per call.
 - Runnable workflows live in `examples/` (single self-contained `run.sh`,
   `MODE=prepare` stops on shortfalls unless `ALLOW_SHORTFALLS=1`,
-  `MODE=refresh` idempotent, incl.
+  `MODE=refresh` idempotent, `TAX_YEAR` empty covers every data year, incl.
   `setup`/`sync`/`portfolio` on-chain stages); covered by
   `tests/test_run_scripts.py` driving it against fixtures.
 - Entities for the overview come from a TOML file (`examples/entities.example.toml`;
