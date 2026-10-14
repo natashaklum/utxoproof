@@ -86,7 +86,9 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
 - Exchange funding links live in `utxoproof/linking.py` (Kraken withdrawal =
   exact sats + date window; ambiguous/unmatched reported, never guessed) and
   surface as provenance-step evidence (`--ledgers` on `portfolio`/`provenance`/
-  `report`); depth-cap truncation is rendered as a note, not silent.
+  `report`); `funding_trail()` extends funded receipts with candidate buys +
+  bank matches (`--bank-csv`/`--bank-type`) rendered as a prologue, never fact.
+  Depth-cap truncation is rendered as a note, not silent.
 - Dashboard lives in `utxoproof/portfolio.py` (entities, rollups, inline SVG
   charts — no JavaScript). Overview -> entity pages -> provenance pages;
   chart HTML is trusted generator output (`| safe` in templates, everything

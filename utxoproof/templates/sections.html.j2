@@ -105,6 +105,31 @@ KYC status: {{ p.kyc_status }} ({{ p.kyc_fraction }}).
 Days held since earliest traced acquisition: {{ p.days_held }}.
 Advisory flags: {{ p.flags }}.</p>
 
+{% if p.prologue is not none %}
+<h3>Fiat funding prologue (candidates, not asserted)</h3>
+<p class="sub">Which euro deposit bought the coins this chain starts from? Exact-BTC
+buys predating the withdrawal, nearest first — bank rows cited with their
+match reasons. These are candidates with evidence, never established fact.</p>
+{% if p.prologue %}
+{% for g in p.prologue %}
+<p>Chain receipt <code>{{ g.chain_txid }}</code> ← Kraken withdrawal
+<code>{{ g.withdrawal_refid }}</code> ({{ g.withdrawal_date }},
+<code>{{ g.ledgers_file }}</code>):</p>
+<ul>
+  {% for c in g.candidates %}
+  <li>{{ c.buy }}<br>{{ c.bank }}</li>
+  {% endfor %}
+</ul>
+{% if g.hidden %}<p class="sub">…plus {{ g.hidden }} older exact-amount buys not shown.</p>{% endif %}
+<p class="sub">Proofs: <code>{{ g.ledgers_file }}</code> withdrawal refid +
+{% if g.bank_file %}<code>{{ g.bank_file }}</code> statement rows{% else %}no statement file supplied{% endif %}.</p>
+{% endfor %}
+{% else %}
+<p>No candidate buy found at the withdrawn amount — partial withdrawals,
+fee skims, or a missing bank statement leave no exact trail.</p>
+{% endif %}
+{% endif %}
+
 <h3>Provenance chain (oldest first)</h3>
 {% if p.truncated %}<p><strong>Note:</strong> chain truncated at {{ p.max_depth }} steps — earliest history not shown. Re-run with a higher depth cap if needed.</p>{% endif %}
 <table>

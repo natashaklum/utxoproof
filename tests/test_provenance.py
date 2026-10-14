@@ -102,3 +102,61 @@ def test_provenance_page_and_cli(tmp_path) -> None:
         == 0
     )
     assert (tmp_path / "provenance_D_0.html").exists()
+
+
+def test_provenance_prologue_names_both_proofs(tmp_path) -> None:
+    import datetime
+    from decimal import Decimal
+
+    from utxoproof.kyc import create_sample_graph
+    from utxoproof.linking import TrailCandidate
+    from utxoproof.reports import write_provenance_page
+
+    trail = [
+        TrailCandidate(
+            chain_txid="C",
+            withdrawal_refid="QW",
+            withdrawal_date="2023-02-01",
+            buy_refid="R1",
+            buy_date="2023-01-10",
+            buy_btc="1",
+            buy_fiat_eur="20000.00",
+            bank=None,
+            ledgers_file="ledgers.csv",
+            bank_file="bank.csv",
+        )
+    ]
+    target = write_provenance_page(
+        create_sample_graph(),
+        "D",
+        0,
+        _price,
+        Decimal("40000"),
+        datetime.date(2024, 6, 1),
+        tmp_path,
+        trail=trail,
+    )
+    html = target.read_text(encoding="utf-8")
+    assert "Fiat funding prologue" in html
+    assert "QW" in html and "R1" in html
+    assert "ledgers.csv" in html and "bank.csv" in html
+    assert "no bank row matched" in html
+
+
+def test_provenance_prologue_absent_without_trail(tmp_path) -> None:
+    import datetime
+    from decimal import Decimal
+
+    from utxoproof.kyc import create_sample_graph
+    from utxoproof.reports import write_provenance_page
+
+    target = write_provenance_page(
+        create_sample_graph(),
+        "D",
+        0,
+        _price,
+        Decimal("40000"),
+        datetime.date(2024, 6, 1),
+        tmp_path,
+    )
+    assert "Fiat funding prologue" not in target.read_text(encoding="utf-8")

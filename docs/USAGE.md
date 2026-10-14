@@ -233,6 +233,16 @@ labels are skipped with a warning while the overview still builds.
 report the same way. Provenance pages state when the chain hit the depth cap
 instead of silently truncating.
 
+Above every provenance chain sits an optional **fiat funding prologue**: for
+each Kraken-funded receipt, the exact-BTC buys predating the withdrawal
+(nearest first, top 5 + overflow note), each with its bank fiat match and
+reasons — or an explicit "no bank row matched". Add `--bank-csv stmt.csv`
+(`--bank-type`, wired in `run.sh` via `BANK_CSV`/`BANK_TYPE`) to `portfolio`,
+`provenance` or `report`. This is candidate evidence with both proofs cited
+(`ledgers.csv` refid + bank file/row), never an asserted fact: partial
+withdrawals, fee skims and unmatched statements simply yield no candidates.
+Without `--bank-csv` the section is omitted entirely (not an empty table).
+
 Zero on-chain balance with the wallet present almost always means descriptors
 were imported with timestamp `now` (no historical rescan): check
 `listdescriptors` for the two `wpkh` entries, then either `rescanblockchain`

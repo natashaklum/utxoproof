@@ -24,6 +24,7 @@ from utxoproof import __version__
 from utxoproof.belgian_tax import COMMUNAL_SURCHARGE_DEFAULT, apply_belgian_tax
 from utxoproof.config import Config
 from utxoproof.exchange import ExchangeTx
+from utxoproof.linking import TrailCandidate
 from utxoproof.paths import add_data_dir_arg, db_path, evidence_root
 
 
@@ -713,6 +714,8 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--wallet", default="utxoproof_watchonly", help="Synced wallet")
     report.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (funding labels)")
     report.add_argument("--trades", default=None, help="Kraken trades.csv join for ledgers")
+    report.add_argument("--bank-csv", default=None, help="Bank statement CSV (funding prologue)")
+    report.add_argument("--bank-type", default="kbc", help="Statement profile for --bank-csv")
     report.add_argument("--site-root", default=None, help="Data-dir site root (menu + hub links)")
     setup = sub.add_parser("setup", help="Create watch-only wallet, import xpubs")
     setup.add_argument("--rpc-url", default="http://127.0.0.1:8332")
@@ -775,6 +778,8 @@ def build_parser() -> argparse.ArgumentParser:
     prov.add_argument("--evidence-dir", default=None, help="Evidence root")
     prov.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (funding labels)")
     prov.add_argument("--trades", default=None, help="Kraken trades.csv join for ledgers")
+    prov.add_argument("--bank-csv", default=None, help="Bank statement CSV (funding prologue)")
+    prov.add_argument("--bank-type", default="kbc", help="Statement profile for --bank-csv")
     prov.add_argument("--site-root", default=None, help="Data-dir site root (menu + hub links)")
     _add_live_prices_arg(prov)
     port = sub.add_parser("portfolio", help="Entity overview from synced UTXOs")
@@ -783,6 +788,8 @@ def build_parser() -> argparse.ArgumentParser:
     port.add_argument("--wallet", default="utxoproof_watchonly", help="Synced wallet")
     port.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (funding labels)")
     port.add_argument("--trades", default=None, help="Kraken trades.csv join for ledgers")
+    port.add_argument("--bank-csv", default=None, help="Bank statement CSV (funding prologue)")
+    port.add_argument("--bank-type", default="kbc", help="Statement profile for --bank-csv")
     port.add_argument("--price", type=Decimal, default=None, help="BTC/EUR price override")
     port.add_argument("--as-of", default=None, help="As-of date YYYY-MM-DD (default: today)")
     port.add_argument("--out", default=None, help="Output directory for overview.html + entities/")
@@ -821,6 +828,29 @@ def _open_db(path: str) -> sqlite3.Connection:
     db = sqlite3.connect(str(db_path))
     init_db(db)
     return db
+
+
+def _trail_for(args: argparse.Namespace, db: sqlite3.Connection) -> list[TrailCandidate]:
+    """Fiat funding trail for provenance pages (empty when not requested).
+
+    Needs ``--ledgers`` + ``--bank-csv``; parse failures degrade to a note
+    with no trail, like funding labels.
+    """
+    from utxoproof.linking import funding_trail
+
+    if not getattr(args, "ledgers", None) or not getattr(args, "bank_csv", None):
+        return []
+    try:
+        return funding_trail(
+            args.ledgers,
+            db,
+            args.bank_csv,
+            getattr(args, "bank_type", "kbc") or "kbc",
+            trades_path=getattr(args, "trades", None),
+        )
+    except (ValueError, OSError) as exc:
+        print(f"funding trail skipped: {exc}")
+        return []
 
 
 def _write_full_from_args(
@@ -875,6 +905,7 @@ def _write_full_from_args(
             ).matches
         except (ValueError, OSError) as exc:
             print(f"funding labels skipped: {exc}")
+    trail = _trail_for(args, db)
     return write_full_report(
         db=db,
         csv_path=args.input,
@@ -892,6 +923,7 @@ def _write_full_from_args(
         funding=funding_matches,
         site_root=getattr(args, "site_root", None),
         tax_years=tax_years,
+        trail=trail,
     )
 
 
@@ -1142,6 +1174,7 @@ def _run_portfolio(args: argparse.Namespace) -> int:
         print(f"ambiguous funding: {line} — left unlabeled")
     for line in funding.unmatched:
         print(f"unmatched withdrawal: {line} — no chain receive in window")
+    trail = _trail_for(args, db)
     portfolio, advisories = portfolio_from_db(
         db, entities, fiat, args.wallet, curve, price, as_of, utxo_tags
     )
@@ -1184,6 +1217,7 @@ def _run_portfolio(args: argparse.Namespace) -> int:
                 prov_dir,
                 funding=funding.matches,
                 site_root=getattr(args, "site_root", None),
+                trail=trail,
             )
             print(f"wrote {target}")
     return 0
@@ -1239,6 +1273,7 @@ def _run_provenance(args: argparse.Namespace) -> int:
             funding = funding_from_ledgers(args.ledgers, db, trades_path=args.trades)
         except (ValueError, OSError) as exc:
             print(f"funding labels skipped: {exc}")
+        trail = _trail_for(args, db)
         target = write_provenance_page(
             db,
             txid,
@@ -1251,6 +1286,7 @@ def _run_provenance(args: argparse.Namespace) -> int:
             evidence_root=evidence_root(args),
             funding=funding.matches,
             site_root=getattr(args, "site_root", None),
+            trail=trail,
         )
         print(f"wrote {target}")
     return 0

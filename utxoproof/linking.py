@@ -16,6 +16,9 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 
+from utxoproof.exchange import ExchangeTx
+from utxoproof.matching import FiatMatch
+
 SAT_PER_BTC = 100_000_000
 
 
@@ -28,6 +31,28 @@ class Withdrawal:
 
 
 @dataclass
+class TrailCandidate:
+    """One candidate answer to 'which buy funded this withdrawal'.
+
+    Never asserted as fact: exact-BTC-amount buys predating the withdrawal,
+    nearest first. ``bank`` is the fiat match for the buy (with reasons) or
+    ``None`` when no bank row matched it.
+    """
+
+    chain_txid: str
+    withdrawal_refid: str
+    withdrawal_date: str
+    buy_refid: str
+    buy_date: str
+    buy_btc: str
+    buy_fiat_eur: str
+    bank: FiatMatch | None = None
+    hidden_count: int = 0
+    ledgers_file: str = ""
+    bank_file: str = ""
+
+
+@dataclass
 class FundingResult:
     """Outcome of matching Kraken legs to chain receives/spends."""
 
@@ -36,18 +61,10 @@ class FundingResult:
     unmatched: list[str] = field(default_factory=list)  # refids, human-readable
 
 
-def kraken_btc_withdrawals(
-    ledgers_path: str | Path, trades_path: str | Path | None = None
-) -> list[Withdrawal]:
-    """BTC exchange<->wallet legs from a Kraken ``ledgers.csv`` export.
-
-    ``trades_path`` is the same join ``import --trades`` takes: without it,
-    margin-disposal legs that need execution prices raise instead of parsing.
-    """
-    from utxoproof.kraken_csv import parse_kraken_ledgers
-
+def legs_from_txs(txs: list[ExchangeTx]) -> list[Withdrawal]:
+    """BTC exchange<->wallet legs from parsed ledger transactions."""
     out = []
-    for tx in parse_kraken_ledgers(Path(ledgers_path), trades_path):
+    for tx in txs:
         if tx.btc <= 0:
             continue
         if tx.kind == "WITHDRAWAL":
@@ -69,6 +86,19 @@ def kraken_btc_withdrawals(
                 )
             )
     return out
+
+
+def kraken_btc_withdrawals(
+    ledgers_path: str | Path, trades_path: str | Path | None = None
+) -> list[Withdrawal]:
+    """BTC exchange<->wallet legs from a Kraken ``ledgers.csv`` export.
+
+    ``trades_path`` is the same join ``import --trades`` takes: without it,
+    margin-disposal legs that need execution prices raise instead of parsing.
+    """
+    from utxoproof.kraken_csv import parse_kraken_ledgers
+
+    return legs_from_txs(parse_kraken_ledgers(Path(ledgers_path), trades_path))
 
 
 def chain_receives(
@@ -163,3 +193,73 @@ def funding_from_ledgers(
         ambiguous=out.ambiguous + inn.ambiguous,
         unmatched=out.unmatched + inn.unmatched,
     )
+
+
+def funding_trail(
+    ledgers_path: str | Path | None,
+    db: sqlite3.Connection,
+    bank_csv: str | Path | None,
+    bank_type: str = "kbc",
+    trades_path: str | Path | None = None,
+    window_days: int = 3,
+    max_candidates: int = 5,
+) -> list[TrailCandidate]:
+    """Candidate answers to 'which buy funded this withdrawal' (never asserted).
+
+    For every chain tx funding-matched to a Kraken withdrawal, list exact-BTC
+    buys predating it, nearest first, each with its bank fiat match (or none).
+    Needs ledgers + bank CSV; either missing yields no candidates (empty list).
+    Raises ledger/bank parse errors instead of guessing — callers catch them.
+    """
+    from utxoproof.banks import parse_bank_csv
+    from utxoproof.kraken_csv import parse_kraken_ledgers
+    from utxoproof.matching import match_fiat_legs
+
+    if not ledgers_path or not bank_csv:
+        return []
+    txs = parse_kraken_ledgers(Path(ledgers_path), trades_path)
+    ledgers_name = Path(ledgers_path).name
+    bank_name = Path(bank_csv).name
+    funding = funding_from_ledgers(ledgers_path, db, window_days, trades_path)
+    funded = {
+        txid for txid, label in funding.matches.items() if label.startswith("Kraken withdrawal ")
+    }
+    if not funded:
+        return []
+    buys = [tx for tx in txs if tx.kind == "BUY" and tx.btc > 0]
+    buy_sats = {id(tx): int((tx.btc * SAT_PER_BTC).to_integral_value()) for tx in buys}
+    matches, _ = match_fiat_legs(txs, parse_bank_csv(bank_csv, bank_type))
+    match_by_tx = {id(m.tx): m for m in matches}
+    withdrawals = [w for w in legs_from_txs(txs) if w.direction == "out"]
+    by_refid = {w.refid: w for w in withdrawals}
+    trail: list[TrailCandidate] = []
+    for chain_txid in sorted(funded):
+        label = funding.matches[chain_txid]
+        refid = label.removeprefix("Kraken withdrawal ").split(" (", 1)[0]
+        w = by_refid.get(refid)
+        if w is None:
+            continue
+        cands = sorted(
+            (tx for tx in buys if buy_sats[id(tx)] == w.sats and tx.date <= w.date),
+            key=lambda tx: ((w.date - tx.date).days, tx.refid),
+        )
+        hidden = max(0, len(cands) - max_candidates)
+        for tx in cands[:max_candidates]:
+            match = match_by_tx.get(id(tx))
+            fiat = f"{tx.fiat_amount:,.2f}" if tx.eur_per_btc > 0 else "—"
+            trail.append(
+                TrailCandidate(
+                    chain_txid=chain_txid,
+                    withdrawal_refid=w.refid,
+                    withdrawal_date=w.date.isoformat(),
+                    buy_refid=tx.refid,
+                    buy_date=tx.date.isoformat(),
+                    buy_btc=f"{tx.btc:f}",
+                    buy_fiat_eur=fiat,
+                    bank=match,
+                    hidden_count=hidden,
+                    ledgers_file=ledgers_name,
+                    bank_file=bank_name,
+                )
+            )
+    return trail

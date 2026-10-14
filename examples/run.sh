@@ -188,6 +188,7 @@ stage_portfolio() {
                 --price "${BTC_PRICE:-40000}" \
                 ${KRAKEN_LEDGERS:+--ledgers "$KRAKEN_LEDGERS"} \
                 ${KRAKEN_TRADES:+--trades "$KRAKEN_TRADES"} \
+                ${BANK_CSV:+--bank-csv "$BANK_CSV" --bank-type "$BANK_TYPE"} \
                 --site-root "$DATA_DIR" \
                 --out "$DATA_DIR/portfolio" 2>&1); then
                 printf '%s\n' "$port_out"
@@ -218,6 +219,7 @@ stage_report() {
                 --config "$CONFIG_FILE" --source "$KRAKEN_LEDGERS" \
                 ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
                 ${BANK_CSV:+--source "$BANK_CSV"} \
+                ${BANK_CSV:+--bank-csv "$BANK_CSV" --bank-type "$BANK_TYPE"} \
                 --site-root "$DATA_DIR" \
                 --out "$DATA_DIR/$TAX_YEAR"
         else
@@ -225,6 +227,7 @@ stage_report() {
                 --source "$KRAKEN_LEDGERS" \
                 ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
                 ${BANK_CSV:+--source "$BANK_CSV"} \
+                ${BANK_CSV:+--bank-csv "$BANK_CSV" --bank-type "$BANK_TYPE"} \
                 --site-root "$DATA_DIR" \
                 --out "$DATA_DIR/$TAX_YEAR"
         fi
@@ -235,6 +238,7 @@ stage_report() {
                 --config "$CONFIG_FILE" --source "$KRAKEN_LEDGERS" \
                 ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
                 ${BANK_CSV:+--source "$BANK_CSV"} \
+                ${BANK_CSV:+--bank-csv "$BANK_CSV" --bank-type "$BANK_TYPE"} \
                 --site-root "$DATA_DIR" \
                 --out "$DATA_DIR"
         else
@@ -242,6 +246,7 @@ stage_report() {
                 --source "$KRAKEN_LEDGERS" \
                 ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
                 ${BANK_CSV:+--source "$BANK_CSV"} \
+                ${BANK_CSV:+--bank-csv "$BANK_CSV" --bank-type "$BANK_TYPE"} \
                 --site-root "$DATA_DIR" \
                 --out "$DATA_DIR"
         fi
