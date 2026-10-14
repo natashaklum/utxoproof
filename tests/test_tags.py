@@ -47,7 +47,7 @@ def test_channel_narrow_and_asserted_wins() -> None:
 
 def test_tags_merge_derived_mixed_and_user() -> None:
     tags = tags_for(_Item(400, False, "mixed"), "exchange_purchase", ("cold-storage",))
-    assert tags == ("buy-and-hold", "exchange", "mixed", "cold-storage")
+    assert tags == ("buy-and-hold", "exchange", "mixed", "privacy-risk", "cold-storage")
     assert tags_for(_Item(10, False, "kyc"), "") == ("accumulating", "unknown")
     # User tags never duplicate derived ones.
     assert tags_for(_Item(400, False, "kyc"), "", ("buy-and-hold",)) == (

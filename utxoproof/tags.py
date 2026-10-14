@@ -7,8 +7,8 @@ donut apiece) plus an overlapping free-tag set per item:
 
 - behavior: speculation (tainted) > buy-and-hold (>= ``HOLD_DAYS``) > accumulating
 - channel: user-asserted > source-derived (exchange/p2p/mining/transfer/unknown)
-- privacy: the existing kyc/non_kyc/mixed/unknown status (charted already) +
-  an explicit ``mixed`` tag where it applies
+- privacy: an explicit ``mixed`` tag where it applies, ``privacy-risk`` where
+  cleanliness cannot be proven (mixed or unknown status)
 """
 
 from __future__ import annotations
@@ -95,11 +95,13 @@ def tags_for(
     user_tags: tuple[str, ...] = (),
     user_channel: str = "",
 ) -> tuple[str, ...]:
-    """Overlapping generic tag set: behavior + channel + mixed + user tags."""
+    """Overlapping generic tag set: behavior + channel + privacy + user tags."""
     tags = [behavior_bucket(item.holding_days, item.speculation_tainted)]
     tags.append(channel_of(source_type, user_channel))
     if item.kyc_status == "mixed":
         tags.append("mixed")
+    if item.kyc_status in ("mixed", "unknown"):
+        tags.append("privacy-risk")
     seen = set(tags)
     for tag in user_tags:
         if tag not in seen:

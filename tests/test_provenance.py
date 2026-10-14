@@ -77,7 +77,8 @@ def test_provenance_page_and_cli(tmp_path) -> None:
     html = target.read_text(encoding="utf-8")
     assert "Consolidation (2 inputs merged)" in html
     assert 'class="mixing"' in html
-    assert "privacy_risk" in html  # header advisory flags for mixed D:0
+    assert "mixed" in html  # D:0 KYC status in the chain table
+    assert "privacy_risk" not in html and "speculation_tainted" not in html
 
     db_path = tmp_path / "prov.db"
     source = create_sample_graph()

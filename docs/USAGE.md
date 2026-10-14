@@ -221,6 +221,11 @@ or in your tags; the tool will not derive `cash` from chain data. Thresholds
 (`365` days) and palettes are fixed and documented here, not tuned per run.
 The bank page adds a matched-vs-unmatched review donut over statement euros.
 
+Tags describe (*what it is*: behavior, channel, mixed/privacy-risk, yours);
+flags recommend (*what to do*: sell/hold/borrow/estate/tax-loss). The tables
+label the columns exactly that way, and the two layers never duplicate: the
+old `speculation_tainted` / `privacy_risk` flags now live only as tags.
+
 That writes `overview/overview.html`, `entities/<id>.html`, and
 `provenance/provenance_<txid>_<vout>.html` per unspent UTXO, so entity-page
 UTXO links resolve. Pass `--ledgers ledgers.csv` (also wired in `run.sh` via

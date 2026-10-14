@@ -26,12 +26,16 @@ ESTATE_SCORE_THRESHOLD = 5
 
 
 class AdvisoryFlag(Enum):
+    """Action-only recommendations (volatile, price-dependent).
+
+    Descriptive classification lives in tags (see ``utxoproof.tags``):
+    behavior bucket, channel, mixed/privacy-risk. Flags never duplicate tags.
+    """
+
     SELL_FRIENDLY = "sell_friendly"
     HOLD_RECOMMENDED = "hold_recommended"
     BORROW_CANDIDATE = "borrow_candidate"
     ESTATE_CANDIDATE = "estate_candidate"
-    PRIVACY_RISK = "privacy_risk"
-    SPECULATION_TAINTED = "speculation_tainted"
     TAX_LOSS_CANDIDATE = "tax_loss_candidate"
 
 
@@ -103,10 +107,6 @@ def assign_flags(advisory: UTXOAdvisory) -> list[AdvisoryFlag]:
         flags.append(AdvisoryFlag.BORROW_CANDIDATE)
     if estate_score(advisory) >= ESTATE_SCORE_THRESHOLD:
         flags.append(AdvisoryFlag.ESTATE_CANDIDATE)
-    if advisory.kyc_status in ("mixed", "unknown") and value > 0:
-        flags.append(AdvisoryFlag.PRIVACY_RISK)
-    if advisory.speculation_tainted:
-        flags.append(AdvisoryFlag.SPECULATION_TAINTED)
     return flags
 
 

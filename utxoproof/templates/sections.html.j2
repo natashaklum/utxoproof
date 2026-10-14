@@ -82,8 +82,9 @@ Ranked by tax cost if sold. Selling everything today would cost
 {{ a.total_tax_eur }} EUR in tax.</p>
 
 <h3>Per-UTXO table</h3>
+<p class="sub">Flags = what to do (recommendations). Tags = what it is (classification).</p>
 <table>
-  <tr><th>UTXO</th><th>Address</th><th>BTC</th><th>Holding (days)</th><th>Cost (EUR)</th><th>Value (EUR)</th><th>Gain (EUR)</th><th>Tax if sold (EUR)</th><th>KYC</th><th>Flags</th><th>Tags</th></tr>
+  <tr><th>UTXO</th><th>Address</th><th>BTC</th><th>Holding (days)</th><th>Cost (EUR)</th><th>Value (EUR)</th><th>Gain (EUR)</th><th>Tax if sold (EUR)</th><th>KYC</th><th>What to do</th><th>What it is</th></tr>
   {% for u in a.advisories %}
   <tr><td>{{ u.utxo }}</td><td><code>{{ u.address }}</code></td><td>{{ u.btc }}</td><td>{{ u.holding_days }}</td><td>{{ u.cost_eur }}</td><td>{{ u.value_eur }}</td><td>{{ u.gain_eur }}</td><td>{{ u.tax_eur }}</td><td>{{ u.kyc }}</td><td>{{ u.flags }}</td><td>{{ u.tags }}</td></tr>
   {% endfor %}
@@ -291,8 +292,9 @@ Click an entity to drill into its UTXOs, then a UTXO for provenance.</p>
 
 {% if e.utxos %}
 <h3>UTXOs (click for provenance)</h3>
+<p class="sub">Flags = what to do (recommendations). Tags = what it is (classification).</p>
 <table>
-  <tr><th>UTXO</th><th>Address</th><th>BTC</th><th>Value (EUR)</th><th>KYC</th><th>Flags</th><th>Tags</th></tr>
+  <tr><th>UTXO</th><th>Address</th><th>BTC</th><th>Value (EUR)</th><th>KYC</th><th>What to do</th><th>What it is</th></tr>
   {% for u in e.utxos %}
   <tr><td><a href="{{ u.href }}"><code>{{ u.id }}</code></a></td><td><code>{{ u.address }}</code></td><td>{{ u.btc }}</td><td>{{ u.value }}</td><td>{{ u.kyc }}</td><td>{{ u.flags }}</td><td>{{ u.tags }}</td></tr>
   {% endfor %}

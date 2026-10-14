@@ -55,11 +55,22 @@ def test_big_seasoned_gain_collects_hold_borrow_estate() -> None:
     assert adv.tax_if_sold_eur == Decimal("9900")
 
 
-def test_privacy_risk_and_taint() -> None:
-    assert AdvisoryFlag.PRIVACY_RISK in _advisory("10000", "20000", 500, "mixed").flags
-    assert AdvisoryFlag.PRIVACY_RISK in _advisory("10000", "20000", 500, "unknown").flags
-    assert AdvisoryFlag.PRIVACY_RISK not in _advisory("10000", "20000", 500, "kyc").flags
-    assert AdvisoryFlag.SPECULATION_TAINTED in _advisory("10000", "20000", 500, tainted=True).flags
+def test_privacy_risk_and_taint_are_tags_not_flags() -> None:
+    from utxoproof.tags import tags_for
+
+    action_flags = {
+        AdvisoryFlag.SELL_FRIENDLY,
+        AdvisoryFlag.HOLD_RECOMMENDED,
+        AdvisoryFlag.BORROW_CANDIDATE,
+        AdvisoryFlag.ESTATE_CANDIDATE,
+        AdvisoryFlag.TAX_LOSS_CANDIDATE,
+    }
+    assert set(_advisory("10000", "20000", 500, "mixed").flags) <= action_flags
+    assert set(_advisory("10000", "20000", 500, tainted=True).flags) <= action_flags
+    assert "privacy-risk" in tags_for(_advisory("10000", "20000", 500, "mixed"), "")
+    assert "privacy-risk" in tags_for(_advisory("10000", "20000", 500, "unknown"), "")
+    assert "privacy-risk" not in tags_for(_advisory("10000", "20000", 500, "kyc"), "")
+    assert "speculation" in tags_for(_advisory("10000", "20000", 500, tainted=True), "")
 
 
 def test_estate_score_and_borrow_boundaries() -> None:
@@ -111,9 +122,8 @@ def test_analyze_wallet_on_sample_graph() -> None:
     }
     assert set(by_id["C:1"].flags) == {
         AdvisoryFlag.HOLD_RECOMMENDED,
-        AdvisoryFlag.PRIVACY_RISK,
     }
-    assert by_id["D:0"].flags == [AdvisoryFlag.PRIVACY_RISK]
+    assert by_id["D:0"].flags == []
     # Ranked by tax-if-sold descending.
     assert [a.txid for a in advisories] == ["E", "D", "C"]
 
@@ -161,7 +171,8 @@ def test_cli_advise(tmp_path, capsys) -> None:
     assert "liquidate_tax_eur:" in out
     assert (tmp_path / "advisory.html").exists()
     html = (tmp_path / "advisory.html").read_text(encoding="utf-8")
-    assert "privacy_risk" in html
+    assert "privacy-risk" in html  # mixed D:0 carries the tag, not a flag
+    assert "What to do" in html and "What it is" in html
 
 
 def test_analyze_wallet_ignores_proven_external_outputs() -> None:
