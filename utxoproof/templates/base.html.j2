@@ -32,6 +32,9 @@
   .disclaimer { font-size: 0.85em; color: #555; border-top: 1px solid #ddd; margin-top: 2em; padding-top: 1em; }
   .toc ul { list-style: none; padding: 0; }
   .toc li { margin: 0.3em 0; }
+  nav.site-nav { background: #eef2f7; border-radius: 8px; padding: 0.6em 1em; margin: 1em 0; font-size: 0.92em; }
+  nav.site-nav a { margin-right: 0.2em; }
+  nav.site-nav strong { margin-right: 0.2em; }
   @media print {
     body { margin: 0; background: #fff; }
     tr, .card { page-break-inside: avoid; }
@@ -49,6 +52,7 @@
     a { color: #7aa5ff; }
     .card .sub, p.sub, .disclaimer, .donut-share { color: #a7adb5; }
     .report-intro, pre.rationale { background: #1d2127; }
+    nav.site-nav { background: #1d2127; }
     .donut-hole { background: #14171c; }
     tr.mixing td, tr.mixing-origin td { background: #4a3f1d; }
   }
@@ -56,6 +60,7 @@
 </head>
 <body>
 {% if demo_notice %}<div class="demo-banner">{{ demo_notice }}</div>{% endif %}
+{% if nav %}<nav class="site-nav">{% for n in nav %}{% if n.current %}<strong>{{ n.title }}</strong>{% else %}<a href="{{ n.href }}">{{ n.title }}</a>{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</nav>{% endif %}
 {% block content %}{% endblock %}
 <p class="disclaimer">{{ disclaimer }}</p>
 </body>

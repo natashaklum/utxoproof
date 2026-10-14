@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Single script to run the full utxoproof pipeline: import -> check -> compute ->
-# sync -> portfolio -> report -> status (+ alltime).
+# setup -> sync -> report -> status (+ alltime) -> portfolio -> bank.
+#
+# Pages render leaf-up so menus and hub links resolve: tax/status/alltime first,
+# then portfolio (links them), then bank last (links everything incl. provenance).
 #
 # Two modes:
 #   MODE=prepare   (default)   — stops if check reports shortfalls
@@ -74,14 +77,25 @@ stage_import() {
 }
 
 # ---------------------------------------------------------------------------
-# Stage: bank statement -> review rows (evidence + corroboration, never pool input)
+# Stage: bank statement review page (fiat-leg matches, never pool input)
 # ---------------------------------------------------------------------------
 stage_bank() {
-    log "bank: statement -> review rows"
+    log "bank: statement review page"
     if [ -n "$BANK_CSV" ]; then
         [ -f "$BANK_CSV" ] || fail "bank statement not found: $BANK_CSV"
         "$UTXOPROOF_BIN" import --file "$BANK_CSV" --type "$BANK_TYPE" \
             --out "$DATA_DIR/bank-rows.csv"
+        if bank_out=$("$UTXOPROOF_BIN" bank --file "$BANK_CSV" --type "$BANK_TYPE" \
+            --manual "$DATA_DIR/manual.csv" --db "$DATA_DIR/utxoproof.db" \
+            --ledgers "$KRAKEN_LEDGERS" \
+            ${KRAKEN_TRADES:+--trades "$KRAKEN_TRADES"} \
+            --provenance-dir "$DATA_DIR/portfolio/provenance" \
+            --out "$DATA_DIR/bank" --site-root "$DATA_DIR" 2>&1); then
+            printf '%s\n' "$bank_out"
+        else
+            log "warning: bank review skipped (see output above)"
+            printf '%s\n' "$bank_out"
+        fi
     else
         log "note: bank review skipped (set BANK_CSV to enable)"
     fi
@@ -163,6 +177,7 @@ stage_portfolio() {
                 --price "${BTC_PRICE:-40000}" \
                 ${KRAKEN_LEDGERS:+--ledgers "$KRAKEN_LEDGERS"} \
                 ${KRAKEN_TRADES:+--trades "$KRAKEN_TRADES"} \
+                --site-root "$DATA_DIR" \
                 --out "$DATA_DIR/portfolio" 2>&1); then
                 printf '%s\n' "$port_out"
             else
@@ -189,12 +204,14 @@ stage_report() {
             --config "$CONFIG_FILE" --source "$KRAKEN_LEDGERS" \
             ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
             ${BANK_CSV:+--source "$BANK_CSV"} \
+            --site-root "$DATA_DIR" \
             --out "$DATA_DIR/$TAX_YEAR"
     else
         "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --year "$TAX_YEAR" \
             --source "$KRAKEN_LEDGERS" \
             ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
             ${BANK_CSV:+--source "$BANK_CSV"} \
+            --site-root "$DATA_DIR" \
             --out "$DATA_DIR/$TAX_YEAR"
     fi
 }
@@ -208,6 +225,7 @@ stage_status() {
         "$UTXOPROOF_BIN" status --input "$DATA_DIR/manual.csv" --price "$BTC_PRICE"
     else
         "$UTXOPROOF_BIN" status --input "$DATA_DIR/manual.csv" \
+            --site-root "$DATA_DIR" \
             --out "$DATA_DIR/current-status"
     fi
 }
@@ -228,7 +246,6 @@ case "$MODE" in
     prepare)
         log "mode: prepare (halts if check reports shortfalls)"
         stage_import
-        stage_bank
         shortfalls=$(stage_check)
         case "$shortfalls" in
             "shortfalls: 0") log "no shortfalls — proceeding" ;;
@@ -243,22 +260,23 @@ case "$MODE" in
         stage_compute
         stage_setup
         stage_sync
-        stage_portfolio
         stage_report
         stage_status
+        stage_portfolio
+        stage_bank
         ;;
     refresh)
         log "mode: refresh (idempotent rerun; shortfalls print but do not stop)"
         stage_import
-        stage_bank
         stage_check || true   # always prints; never aborts
         stage_compute
         stage_setup
         stage_sync
-        stage_portfolio
         stage_report
         stage_status
         stage_alltime
+        stage_portfolio
+        stage_bank
         ;;
     *)
         fail "unknown MODE='$MODE'; use 'prepare' or 'refresh'"

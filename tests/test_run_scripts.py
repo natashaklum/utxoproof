@@ -123,3 +123,34 @@ def test_refresh_converts_bank_statement(tmp_path: Path) -> None:
     bank_rows = data / "bank-rows.csv"
     assert bank_rows.is_file()
     assert "BINANCE storting" in bank_rows.read_text(encoding="utf-8")
+
+
+def test_refresh_bank_page_links_nav_and_matches(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    proc = _run(
+        "run.sh",
+        {
+            "DATA_DIR": str(data),
+            "KRAKEN_LEDGERS": str(FIXTURES / "kraken_ledgers_2023.csv"),
+            "KRAKEN_TRADES": "",
+            "BANK_CSV": str(FIXTURES / "kbc_2023.csv"),
+            "BANK_TYPE": "kbc",
+            "TAX_YEAR": "2023",
+            "BTC_PRICE": "40000",
+            "MODE": "refresh",
+        },
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    bank_html = data / "bank" / "bank.html"
+    assert bank_html.is_file()
+    html = bank_html.read_text(encoding="utf-8")
+    assert '<nav class="site-nav">' in html  # real menu element, not just CSS
+    # Planned menu: the overview link is present even though no overview was
+    # built in this run (no entities/node) — the skip note says how to get it.
+    assert "../portfolio/overview/overview.html" in html
+    assert "<strong>Bank review</strong>" in html  # current page marked
+    report_html = data / "2023" / "report.html"
+    report_text = report_html.read_text(encoding="utf-8")
+    assert '<nav class="site-nav">' in report_text
+    assert "../bank/bank.html" in report_text  # tax page reaches bank review
+    assert "<strong>Tax 2023</strong>" in report_text

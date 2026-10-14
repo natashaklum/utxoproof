@@ -86,6 +86,29 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
     links: list[str] = []
 
+    # Predetermined nav: the demo layout is fully known upfront, so every page
+    # gets the same menu (no existence gating needed mid-build).
+    from utxoproof.reports import site_nav
+
+    nav_pages: list[tuple[str, str]] = [
+        ("Full report (everything)", "full/fullreport.html"),
+        ("Portfolio overview", "overview/overview.html"),
+    ]
+    for _demo in DEMOS:
+        nav_pages.append((_demo.title, f"{_demo.slug}/report.html"))
+        nav_pages.append((f"Holdings status — {_demo.slug}", f"{_demo.slug}/status.html"))
+    nav_pages += [
+        ("Descriptor check (BIP84 vectors)", "descriptors/descriptors.html"),
+        ("Bank review (KBC statement)", "bank/bank.html"),
+        ("Privacy report (sample graph)", "privacy/privacy.html"),
+        ("Advisory (sample graph)", "advisory/advisory.html"),
+        ("Provenance D:0", "provenance/provenance_D_0.html"),
+        ("All-time summary (manual CSV)", "alltime/summary.html"),
+    ]
+
+    def dnav(target_rel: str) -> list[dict[str, object]]:
+        return site_nav(nav_pages, out, out / target_rel)
+
     # Receipt-date valuation for deposits, from the vendored price history
     # (offline, deterministic).
     from utxoproof.db import open_memory_db
@@ -128,7 +151,12 @@ def main() -> int:
         else:
             csv_path = demo.csv_path
         target = write_report(
-            str(csv_path), year, out / slug, demo_notice=DEMO_NOTICE, price_at=demo_price_at
+            str(csv_path),
+            year,
+            out / slug,
+            demo_notice=DEMO_NOTICE,
+            price_at=demo_price_at,
+            nav=dnav(f"{slug}/report.html"),
         )
         rel = target.relative_to(out)
         links.append(f'<li><a href="{rel}">{demo.title}</a></li>')
@@ -145,11 +173,19 @@ def main() -> int:
     kbc_rows = parse_bank_csv(ROOT / "tests" / "fixtures" / "kbc_2023.csv", "kbc")
     kbc_matches, kbc_unmatched = match_fiat_legs(kraken_demo_txs, kbc_rows)
     write_bank_page(
-        "kbc", kbc_rows, kbc_matches, kbc_unmatched, out / "bank", demo_notice=DEMO_NOTICE
+        "kbc",
+        kbc_rows,
+        kbc_matches,
+        kbc_unmatched,
+        out / "bank",
+        demo_notice=DEMO_NOTICE,
+        nav=dnav("bank/bank.html"),
     )
     links.append('<li><a href="bank/bank.html">Bank review (KBC statement)</a></li>')
 
-    write_descriptors_page(out / "descriptors", demo_notice=DEMO_NOTICE)
+    write_descriptors_page(
+        out / "descriptors", demo_notice=DEMO_NOTICE, nav=dnav("descriptors/descriptors.html")
+    )
     links.append(
         '<li><a href="descriptors/descriptors.html">Descriptor check (BIP84 vectors)</a></li>'
     )
@@ -171,11 +207,17 @@ def main() -> int:
             out / slug,
             demo_notice=DEMO_NOTICE,
             price_at=demo_price_at,
+            nav=dnav(f"{slug}/status.html"),
         )
         links.append(f'<li><a href="{slug}/status.html">Holdings status — {slug}</a></li>')
 
     # Privacy analysis over the shared sample graph (in-memory demo DB).
-    write_privacy_page(create_sample_graph(), out / "privacy", demo_notice=DEMO_NOTICE)
+    write_privacy_page(
+        create_sample_graph(),
+        out / "privacy",
+        demo_notice=DEMO_NOTICE,
+        nav=dnav("privacy/privacy.html"),
+    )
     links.append('<li><a href="privacy/privacy.html">Privacy report (sample graph)</a></li>')
 
     # Advisory over the sample graph + one seasoned estate UTXO.
@@ -210,6 +252,7 @@ def main() -> int:
         as_of.isoformat(),
         out / "advisory",
         demo_notice=DEMO_NOTICE,
+        nav=dnav("advisory/advisory.html"),
     )
     links.append('<li><a href="advisory/advisory.html">Advisory (sample graph)</a></li>')
 
@@ -258,6 +301,7 @@ def main() -> int:
         demo_notice=DEMO_NOTICE,
         evidence_root=out / "demo-evidence",
         evidence_url_prefix="../demo-evidence",
+        nav=dnav("provenance/provenance_D_0.html"),
     )
     links.append('<li><a href="provenance/provenance_D_0.html">Provenance D:0</a></li>')
 
@@ -268,6 +312,7 @@ def main() -> int:
         out / "alltime",
         demo_notice=DEMO_NOTICE,
         price_at=demo_price_at,
+        nav=dnav("alltime/summary.html"),
     )
     links.append('<li><a href="alltime/summary.html">All-time summary (manual CSV)</a></li>')
 
@@ -289,6 +334,7 @@ def main() -> int:
             demo_notice=DEMO_NOTICE,
             evidence_root=out / "demo-evidence",
             evidence_url_prefix="../demo-evidence",
+            nav=dnav(f"provenance/provenance_{txid}_{vout}.html"),
         )
     unspent = demo_db.execute(
         "SELECT txid, vout, value_sat, kyc_status FROM tx_outputs WHERE spent_by_txid IS NULL"
@@ -343,6 +389,7 @@ def main() -> int:
         out / "overview",
         sparkline,
         demo_notice=DEMO_NOTICE,
+        nav=dnav("overview/overview.html"),
     )
     flags_by_utxo = {
         utxo: ",".join(sorted(f.value for f in advisory_by_utxo[utxo].flags))
@@ -354,6 +401,7 @@ def main() -> int:
         out / "entities",
         flags_by_utxo,
         demo_notice=DEMO_NOTICE,
+        nav=dnav("entities/ledger-savings.html"),
     )
 
     # Full printable report combining every section (same builders + macros
@@ -375,6 +423,7 @@ def main() -> int:
         demo_notice=DEMO_NOTICE,
         evidence_root=out / "demo-evidence",
         evidence_url_prefix="../demo-evidence",
+        nav=dnav("full/fullreport.html"),
     )
     links.insert(
         0, '<li><a href="full/fullreport.html"><strong>Full report (everything)</strong></a></li>'

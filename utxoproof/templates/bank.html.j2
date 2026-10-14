@@ -16,9 +16,9 @@
 <h2>Fiat-leg matches</h2>
 {% if matches %}
 <table>
-  <tr><th>Trade</th><th>Trade fiat (EUR)</th><th>Statement date</th><th>Description</th><th>Amount (EUR)</th></tr>
+  <tr><th>Trade</th><th>Trade fiat (EUR)</th><th>Tier</th><th>Why matched</th><th>Statement date</th><th>Description</th><th>Amount (EUR)</th><th>Chain</th></tr>
   {% for m in matches %}
-  <tr><td>{{ m.trade }}</td><td>{{ m.trade_fiat }}</td><td>{{ m.date }}</td><td>{{ m.description }}</td><td>{{ m.amount }}</td></tr>
+  <tr><td>{{ m.trade }}</td><td>{{ m.trade_fiat }}</td><td>{{ m.tier }}</td><td>{{ m.reasons }}</td><td>{{ m.date }}</td><td>{{ m.description }}</td><td>{{ m.amount }}</td><td>{% if m.chain_href %}<a href="{{ m.chain_href }}"><code>{{ m.chain }}</code></a>{% else %}<code>{{ m.chain }}</code>{% endif %}</td></tr>
   {% endfor %}
 </table>
 {% else %}

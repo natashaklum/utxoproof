@@ -241,3 +241,38 @@ def test_address_column_flows_to_entity_pages(tmp_path: Path) -> None:
     assert "<th>Address</th>" in html
     assert addr in html
     assert "—" in html  # outputs without a recorded address fall back gracefully
+
+
+def test_overview_hub_lists_related_reports(tmp_path: Path) -> None:
+    from utxoproof.reports import write_overview_page
+
+    target = write_overview_page(
+        _portfolio(),
+        "2024-06-01",
+        "test price",
+        tmp_path,
+        "",
+        reports=[
+            {"title": "Tax report 2023", "href": "../../2023/report.html"},
+            {"title": "Bank review", "href": "../../bank/bank.html"},
+        ],
+    )
+    html = target.read_text(encoding="utf-8")
+    assert "Related reports" in html
+    assert "../../2023/report.html" in html
+    assert "../../bank/bank.html" in html
+
+
+def test_entity_review_link_renders(tmp_path: Path) -> None:
+    from utxoproof.reports import write_entity_pages
+
+    write_entity_pages(
+        _portfolio(),
+        "../provenance",
+        tmp_path,
+        review_links={"bank": {"title": "Bank review", "href": "../../bank/bank.html"}},
+    )
+    bank = (tmp_path / "bank.html").read_text(encoding="utf-8")
+    assert "Review:" in bank and "../../bank/bank.html" in bank
+    cold = (tmp_path / "cold.html").read_text(encoding="utf-8")
+    assert "Review:" not in cold

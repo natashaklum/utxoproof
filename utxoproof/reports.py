@@ -8,6 +8,7 @@ Print-optimised CSS is inline so the artifact is a single self-contained file.
 from __future__ import annotations
 
 import datetime
+import os
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -22,7 +23,7 @@ from utxoproof.banks import BankRow
 from utxoproof.belgian_tax import COMMUNAL_SURCHARGE_DEFAULT, apply_belgian_tax
 from utxoproof.cli import PriceAt, compute_details
 from utxoproof.config import ClassifierConfig
-from utxoproof.exchange import ExchangeTx
+from utxoproof.matching import FiatMatch
 from utxoproof.portfolio import Portfolio
 
 DISCLAIMER = (
@@ -231,7 +232,9 @@ def build_tax_context(report: TaxReport) -> dict[str, object]:
     }
 
 
-def render_report(report: TaxReport, demo_notice: str = "") -> str:
+def render_report(
+    report: TaxReport, demo_notice: str = "", nav: list[dict[str, object]] | None = None
+) -> str:
     """Render the HTML report. Numbers are preformatted (2dp) for the template."""
     return (
         _env()
@@ -241,6 +244,7 @@ def render_report(report: TaxReport, demo_notice: str = "") -> str:
             intro=INTROS["tax"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
+            nav=nav or [],
         )
     )
 
@@ -253,6 +257,8 @@ def write_report(
     classifier_cfg: ClassifierConfig | None = None,
     demo_notice: str = "",
     price_at: PriceAt | None = None,
+    nav: list[dict[str, object]] | None = None,
+    site_root: str | Path | None = None,
 ) -> Path:
     """Build + render + write ``report.html`` into ``out_dir``. Returns the path."""
     out = Path(out_dir)
@@ -262,10 +268,134 @@ def write_report(
         render_report(
             build_report(csv_path, year, communal_rate, classifier_cfg, price_at=price_at),
             demo_notice,
+            _resolve_nav(nav, site_root, target, year),
         ),
         encoding="utf-8",
     )
     return target
+
+
+def run_site_pages(site_root: str | Path, tax_year: int | None) -> list[tuple[str, str]]:
+    """Nav candidates for the ``run.sh`` data-dir layout, (title, site-relative path)."""
+    pages: list[tuple[str, str]] = [("Overview", "portfolio/overview/overview.html")]
+    if tax_year is not None:
+        pages.append((f"Tax {tax_year}", f"{tax_year}/report.html"))
+    pages += [
+        ("Bank review", "bank/bank.html"),
+        ("Status", "current-status/status.html"),
+        ("All-time", "alltime/summary.html"),
+    ]
+    return pages
+
+
+def latest_tax_year(site_root: str | Path) -> int | None:
+    """Newest ``<YYYY>/report.html`` under the site root, if any."""
+    years = sorted(
+        int(p.parent.name)
+        for p in Path(site_root).glob("[0-9][0-9][0-9][0-9]/report.html")
+        if p.parent.name.isdigit()
+    )
+    return years[-1] if years else None
+
+
+def site_nav(
+    pages: list[tuple[str, str]],
+    site_root: str | Path,
+    page_file: str | Path,
+) -> list[dict[str, object]]:
+    """Nav items for ``page_file``: hrefs relativized to the page.
+
+    Planned, not existence-gated: single-pass builds cannot see later
+    siblings, so gating hollows the menu. ``run.sh`` lays out the canonical
+    tree and skips loudly — a link to a skipped stage dangles visibly next
+    to the log line explaining the skip. Direct CLI use gets nav only via
+    explicit ``--site-root`` (same contract).
+    """
+    root = Path(site_root)
+    current = Path(page_file).resolve()
+    items = []
+    for title, rel in pages:
+        target = root / rel
+        items.append(
+            {
+                "title": title,
+                "href": os.path.relpath(target, current.parent),
+                "current": target.resolve() == current,
+            }
+        )
+    return items
+
+
+def nav_for_run_layout(
+    site_root: str | Path | None, page_file: str | Path, tax_year: int | None = None
+) -> list[dict[str, object]]:
+    """Nav for a page in the ``run.sh`` layout (empty without a site root)."""
+    if site_root is None:
+        return []
+    year = tax_year if tax_year is not None else latest_tax_year(site_root)
+    return site_nav(run_site_pages(site_root, year), site_root, page_file)
+
+
+def _resolve_nav(
+    nav: list[dict[str, object]] | None,
+    site_root: str | Path | None,
+    page_file: str | Path,
+    tax_year: int | None = None,
+) -> list[dict[str, object]]:
+    """Explicit nav wins; otherwise derive from the site root; else no menu."""
+    if nav is not None:
+        return nav
+    if site_root is None:
+        return []
+    return nav_for_run_layout(site_root, page_file, tax_year)
+
+
+def overview_related(
+    site_root: str | Path, overview_file: str | Path, tax_year: int | None = None
+) -> list[dict[str, str]]:
+    """Related-reports links for the overview hub (planned canonical set)."""
+    year = tax_year if tax_year is not None else latest_tax_year(site_root)
+    candidates: list[tuple[str, str]] = []
+    if year is not None:
+        candidates.append((f"Tax report {year}", f"{year}/report.html"))
+    candidates += [
+        ("Bank review", "bank/bank.html"),
+        ("Holdings status", "current-status/status.html"),
+        ("All-time summary", "alltime/summary.html"),
+    ]
+    root = Path(site_root)
+    parent = Path(overview_file).parent
+    return [
+        {"title": title, "href": os.path.relpath(root / rel, parent)}
+        for title, rel in candidates
+    ]
+
+
+def entity_review_links(
+    portfolio: Portfolio,
+    site_root: str | Path,
+    entities_dir: str | Path,
+    tax_year: int | None = None,
+) -> dict[str, dict[str, str]]:
+    """Per-entity review links: bank entities -> bank review, exchange -> tax report.
+
+    Planned like the menu (see ``site_nav``): wallet entities need none (their
+    UTXO rows already link to provenance).
+    """
+    year = tax_year if tax_year is not None else latest_tax_year(site_root)
+    root = Path(site_root)
+    parent = Path(entities_dir)
+    links: dict[str, dict[str, str]] = {}
+    for entity in portfolio.entities:
+        target: Path | None = None
+        title = ""
+        if entity.kind == "bank":
+            target, title = root / "bank" / "bank.html", "Bank review"
+        elif entity.kind == "exchange" and year is not None:
+            target, title = root / str(year) / "report.html", f"Tax report {year}"
+        if target is not None:
+            links[entity.id] = {"title": title, "href": os.path.relpath(target, parent)}
+    return links
 
 
 # BIP84 spec-vector account (m/84'/0'/0', worthless test key).
@@ -276,7 +406,12 @@ DESCRIPTORS_DEMO_XPUB = (
 DESCRIPTORS_DEMO_FINGERPRINT = "73c5da0a"
 
 
-def write_descriptors_page(out_dir: str | Path, demo_notice: str = "") -> Path:
+def write_descriptors_page(
+    out_dir: str | Path,
+    demo_notice: str = "",
+    nav: list[dict[str, object]] | None = None,
+    site_root: str | Path | None = None,
+) -> Path:
     """Render the descriptor/address check page into ``out_dir``."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -289,6 +424,7 @@ def write_descriptors_page(out_dir: str | Path, demo_notice: str = "") -> Path:
             intro=INTROS["descriptors"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
+            nav=_resolve_nav(nav, site_root, target),
         ),
         encoding="utf-8",
     )
@@ -348,6 +484,8 @@ def write_status_page(
     out_dir: str | Path,
     demo_notice: str = "",
     price_at: PriceAt | None = None,
+    nav: list[dict[str, object]] | None = None,
+    site_root: str | Path | None = None,
 ) -> Path:
     """Render the holdings status page into ``out_dir``."""
     out = Path(out_dir)
@@ -361,6 +499,7 @@ def write_status_page(
             intro=INTROS["status"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
+            nav=_resolve_nav(nav, site_root, target),
         ),
         encoding="utf-8",
     )
@@ -395,7 +534,13 @@ def build_privacy_context(db: sqlite3.Connection) -> dict[str, object]:
     }
 
 
-def write_privacy_page(db: sqlite3.Connection, out_dir: str | Path, demo_notice: str = "") -> Path:
+def write_privacy_page(
+    db: sqlite3.Connection,
+    out_dir: str | Path,
+    demo_notice: str = "",
+    nav: list[dict[str, object]] | None = None,
+    site_root: str | Path | None = None,
+) -> Path:
     """Run KYC seeding + propagation, then render the privacy page."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -408,6 +553,7 @@ def write_privacy_page(db: sqlite3.Connection, out_dir: str | Path, demo_notice:
             intro=INTROS["privacy"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
+            nav=_resolve_nav(nav, site_root, target),
         ),
         encoding="utf-8",
     )
@@ -454,6 +600,8 @@ def write_advisory_page(
     as_of: str,
     out_dir: str | Path,
     demo_notice: str = "",
+    nav: list[dict[str, object]] | None = None,
+    site_root: str | Path | None = None,
 ) -> Path:
     """Render the per-UTXO advisory table into ``out_dir``."""
     out = Path(out_dir)
@@ -467,6 +615,7 @@ def write_advisory_page(
             intro=INTROS["advisory"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
+            nav=_resolve_nav(nav, site_root, target),
         ),
         encoding="utf-8",
     )
@@ -476,17 +625,37 @@ def write_advisory_page(
 def write_bank_page(
     bank: str,
     rows: list[BankRow],
-    matches: list[tuple[ExchangeTx, BankRow]],
+    matches: list[FiatMatch],
     unmatched: list[BankRow],
     out_dir: str | Path,
     demo_notice: str = "",
+    provenance_dir: str | Path | None = None,
+    nav: list[dict[str, object]] | None = None,
+    site_root: str | Path | None = None,
 ) -> Path:
     """Render parsed bank-statement rows + fiat-leg match review into ``out_dir``.
 
     Rows are evidence and corroboration (plan Sec. 11), never pool input:
-    ``matches`` pair exchange trades with statement rows, ``unmatched`` need
-    manual review. All display strings stay autoescaped.
+    ``matches`` pair exchange trades with statement rows (reasons shown),
+    ``unmatched`` need manual review. ``provenance_dir`` links matched trades
+    to chain provenance pages where they exist. All strings stay autoescaped.
     """
+
+    def chain_cell(match: FiatMatch) -> dict[str, str]:
+        if not match.chain_txid:
+            return {"chain": "—", "chain_href": ""}
+        href = ""
+        if provenance_dir is not None:
+            for vout in range(32):
+                candidate = (
+                    Path(provenance_dir) / f"provenance_{match.chain_txid}_{vout}.html"
+                )
+                if candidate.is_file():
+                    href = os.path.relpath(candidate, Path(out_dir))
+                    break
+        short = f"{match.chain_txid[:12]}…"
+        return {"chain": short, "chain_href": href}
+
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     target = out / "bank.html"
@@ -507,13 +676,18 @@ def write_bank_page(
             ],
             matches=[
                 {
-                    "trade": f"{tx.date.isoformat()} {tx.kind} {tx.btc} BTC",
-                    "trade_fiat": f"{tx.fiat_amount:,.2f}",
-                    "date": row.date.isoformat(),
-                    "description": row.description,
-                    "amount": f"{row.amount_eur:,.2f}",
+                    "trade": (
+                        f"{m.tx.date.isoformat()} {m.tx.kind} {m.tx.btc} BTC"
+                    ),
+                    "trade_fiat": f"{m.tx.fiat_amount:,.2f}",
+                    "tier": m.tier,
+                    "reasons": "; ".join(m.reasons),
+                    "date": m.bank.date.isoformat(),
+                    "description": m.bank.description,
+                    "amount": f"{m.bank.amount_eur:,.2f}",
+                    **chain_cell(m),
                 }
-                for tx, row in matches
+                for m in matches
             ],
             unmatched=[
                 {
@@ -526,6 +700,7 @@ def write_bank_page(
             intro=INTROS["bank"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
+            nav=_resolve_nav(nav, site_root, target),
         ),
         encoding="utf-8",
     )
@@ -631,6 +806,8 @@ def write_provenance_page(
     evidence_root: str | Path | None = None,
     evidence_url_prefix: str = "",
     funding: dict[str, str] | None = None,
+    nav: list[dict[str, object]] | None = None,
+    site_root: str | Path | None = None,
 ) -> Path:
     """Render the chain-of-custody page for ``txid:vout`` into ``out_dir``."""
     out = Path(out_dir)
@@ -655,6 +832,7 @@ def write_provenance_page(
             intro=INTROS["provenance"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
+            nav=_resolve_nav(nav, site_root, target),
         ),
         encoding="utf-8",
     )
@@ -718,6 +896,8 @@ def write_alltime_page(
     out_dir: str | Path,
     demo_notice: str = "",
     price_at: PriceAt | None = None,
+    nav: list[dict[str, object]] | None = None,
+    site_root: str | Path | None = None,
 ) -> Path:
     """Render the all-time realized-gains summary into ``out_dir``."""
     out = Path(out_dir)
@@ -731,6 +911,7 @@ def write_alltime_page(
             intro=INTROS["alltime"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
+            nav=_resolve_nav(nav, site_root, target),
         ),
         encoding="utf-8",
     )
@@ -754,6 +935,7 @@ def build_overview_context(
     as_of: str,
     price_note: str,
     price_history_svg: str = "",
+    reports: list[dict[str, str]] | None = None,
 ) -> dict[str, object]:
     """Preformatted context dict for the overview section."""
     from utxoproof.portfolio import donut_legend, donut_ring, svg_bars
@@ -783,6 +965,7 @@ def build_overview_context(
             for color, label, value in donut_legend(portfolio.kyc_split())
         ],
         "price_history_svg": price_history_svg,
+        "reports": list(reports or []),
         "entities": [
             {
                 "href": f"../entities/{eid}.html",
@@ -805,19 +988,34 @@ def write_overview_page(
     out_dir: str | Path,
     price_history_svg: str = "",
     demo_notice: str = "",
+    reports: list[dict[str, str]] | None = None,
+    nav: list[dict[str, object]] | None = None,
+    site_root: str | Path | None = None,
 ) -> Path:
-    """Render the portfolio dashboard into ``out_dir``."""
+    """Render the portfolio dashboard into ``out_dir``.
+
+    With ``site_root``, the overview becomes the site hub: related-reports
+    links and menu are derived from siblings that exist — no second front
+    door next to an index page.
+    """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     target = out / "overview.html"
+    if reports is None and site_root is not None:
+        reports = overview_related(site_root, target)
+    if nav is None and site_root is not None:
+        nav = nav_for_run_layout(site_root, target)
     target.write_text(
         _env()
         .get_template("overview.html.j2")
         .render(
-            overview=build_overview_context(portfolio, as_of, price_note, price_history_svg),
+            overview=build_overview_context(
+                portfolio, as_of, price_note, price_history_svg, reports
+            ),
             intro=INTROS["overview"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
+            nav=nav or [],
         ),
         encoding="utf-8",
     )
@@ -830,6 +1028,7 @@ def build_entity_context(
     provenance_rel: str,
     flags_by_utxo: dict[str, str] | None = None,
     back_href: str = "../overview/overview.html",
+    review: dict[str, str] | None = None,
 ) -> dict[str, object]:
     """Preformatted context dict for one entity section."""
     from utxoproof.portfolio import svg_bars
@@ -843,6 +1042,7 @@ def build_entity_context(
         "kind": entity.kind,
         "detail": entity.detail,
         "total_eur": f"{portfolio.entity_value_eur(entity.id):,.2f}",
+        "review": dict(review or {}),
         "utxos": [
             {
                 "id": f"{u.txid}:{u.vout}",
@@ -868,6 +1068,9 @@ def write_entity_pages(
     out_dir: str | Path,
     flags_by_utxo: dict[str, str] | None = None,
     demo_notice: str = "",
+    review_links: dict[str, dict[str, str]] | None = None,
+    nav: list[dict[str, object]] | None = None,
+    site_root: str | Path | None = None,
 ) -> list[Path]:
     """Render one page per entity into ``out_dir``. Returns page paths."""
     out = Path(out_dir)
@@ -875,14 +1078,27 @@ def write_entity_pages(
     targets = []
     for entity in portfolio.entities:
         target = out / f"{entity.id}.html"
+        page_nav = nav
+        if page_nav is None and site_root is not None:
+            page_nav = nav_for_run_layout(site_root, target)
+        page_reviews = review_links
+        if page_reviews is None and site_root is not None:
+            page_reviews = entity_review_links(portfolio, site_root, out)
         target.write_text(
             _env()
             .get_template("entity.html.j2")
             .render(
-                entity=build_entity_context(portfolio, entity.id, provenance_rel, flags_by_utxo),
+                entity=build_entity_context(
+                    portfolio,
+                    entity.id,
+                    provenance_rel,
+                    flags_by_utxo,
+                    review=(page_reviews or {}).get(entity.id),
+                ),
                 intro=INTROS["entity"],
                 disclaimer=DISCLAIMER,
                 demo_notice=demo_notice,
+                nav=page_nav or [],
             ),
             encoding="utf-8",
         )
@@ -910,6 +1126,8 @@ def write_full_report(
     evidence_root: str | Path | None = None,
     evidence_url_prefix: str = "",
     funding: dict[str, str] | None = None,
+    nav: list[dict[str, object]] | None = None,
+    site_root: str | Path | None = None,
 ) -> Path:
     """Compose every section into one printable ``fullreport.html``."""
     from utxoproof.advisory import analyze_wallet
@@ -978,6 +1196,7 @@ def write_full_report(
             overview_intro=INTROS["overview"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
+            nav=_resolve_nav(nav, site_root, target),
         ),
         encoding="utf-8",
     )

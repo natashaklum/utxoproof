@@ -223,12 +223,22 @@ Click an entity to drill into its UTXOs, then a UTXO for provenance.</p>
   <tr><td><a href="{{ e.href }}">{{ e.label }}</a></td><td>{{ e.kind }}</td><td>{{ e.utxos }}</td><td>{{ e.btc }}</td><td>{{ e.value }}</td><td>{{ e.share }}</td></tr>
   {% endfor %}
 </table>
+
+{% if o.reports %}
+<h3>Related reports</h3>
+<ul>
+  {% for r in o.reports %}
+  <li><a href="{{ r.href }}">{{ r.title }}</a></li>
+  {% endfor %}
+</ul>
+{% endif %}
 {% endmacro %}
 
 {% macro entity_section(e, intro) %}
 {{ intro_block(e.label, intro) }}
 <p><a href="{{ e.back_href }}">← portfolio overview</a></p>
 <p>{{ e.kind }} — {{ e.detail }} Total value: {{ e.total_eur }} EUR.</p>
+{% if e.review %}<p>Review: <a href="{{ e.review.href }}">{{ e.review.title }}</a></p>{% endif %}
 
 {% if e.utxos %}
 <h3>UTXOs (click for provenance)</h3>

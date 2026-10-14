@@ -1,11 +1,12 @@
 """Bank parser + fiat-leg matching tests (Sprint 8)."""
 
+import datetime
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
-from utxoproof.banks import BANK_PROFILES, parse_amount, parse_bank_csv
+from utxoproof.banks import BANK_PROFILES, BankRow, parse_amount, parse_bank_csv
 from utxoproof.kraken_csv import parse_kraken_ledgers
 from utxoproof.matching import match_fiat_legs
 
@@ -44,8 +45,40 @@ def test_fiat_leg_matching() -> None:
     txs = parse_kraken_ledgers(FIXTURES / "kraken_ledgers_2023.csv")
     bank_rows = parse_bank_csv(FIXTURES / "ing_matching.csv", "ing")
     matches, unmatched = match_fiat_legs(txs, bank_rows)
-    assert len(matches) == 2
-    assert matches[0][0].refid == "R1"  # same-day exact amount
-    assert matches[1][0].refid == "R2"  # 1 day off, exact amount
+    assert len(matches) == 3
+    assert matches[0].tx.refid == "R1"  # same-day exact amount, reference hit
+    assert matches[0].tier == "strong"
+    assert any("direction outflow<->BUY" in r for r in matches[0].reasons)
+    assert matches[1].tx.refid == "R2"  # 1 day off, exact amount, reference hit
+    assert matches[1].tier == "strong"
+    assert matches[2].tx.refid == "R4"  # direction+amount+date, no reference
+    assert matches[2].tier == "standard"
     assert len(unmatched) == 1
     assert unmatched[0].reference == "NOMATCH"
+
+
+def test_fiat_leg_direction_mismatch_never_matches() -> None:
+    from utxoproof.exchange import ExchangeTx
+
+    txs = [
+        ExchangeTx(
+            date=datetime.date(2023, 1, 10),
+            kind="BUY",
+            btc=Decimal("1"),
+            eur_per_btc=Decimal("20000"),
+            fee_eur=Decimal("0"),
+            refid="X",
+        )
+    ]
+    bank_rows = parse_bank_csv(FIXTURES / "ing_matching.csv", "ing")
+    # Flip the R1 outflow into an inflow: same date+amount, wrong direction.
+    bank_rows[0] = BankRow(
+        date=bank_rows[0].date,
+        description=bank_rows[0].description,
+        amount_eur=Decimal("20000"),
+        counterparty_iban=bank_rows[0].counterparty_iban,
+        reference=bank_rows[0].reference,
+    )
+    matches, unmatched = match_fiat_legs(txs, bank_rows)
+    assert matches == []
+    assert len(unmatched) == len(bank_rows)

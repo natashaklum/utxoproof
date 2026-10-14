@@ -226,6 +226,7 @@ def test_cli_full_report(tmp_path: Path) -> None:
 def test_bank_page_renders_rows_matches_and_review(tmp_path: Path) -> None:
     from utxoproof.banks import parse_bank_csv
     from utxoproof.exchange import ExchangeTx
+    from utxoproof.matching import FiatMatch
     from utxoproof.reports import write_bank_page
 
     rows = parse_bank_csv(Path(__file__).parent / "fixtures" / "kbc_2023.csv", "kbc")
@@ -238,13 +239,79 @@ def test_bank_page_renders_rows_matches_and_review(tmp_path: Path) -> None:
         fee_eur=Decimal("0"),
         refid="T1",
     )
-    target = write_bank_page("kbc", rows, [(tx, rows[0])], [], tmp_path)
+    match = FiatMatch(tx, rows[0], ["date +0d", "direction outflow<->BUY"], "standard")
+    target = write_bank_page("kbc", rows, [match], [], tmp_path)
     html = target.read_text(encoding="utf-8")
     assert "BINANCE storting" in html
     assert "11,000.00" in html
     assert "BUY 0.5 BTC" in html
+    assert "direction outflow&lt;-&gt;BUY" in html
     assert "Nothing to review." in html
 
     target = write_bank_page("kbc", rows, [], rows, tmp_path)
     html = target.read_text(encoding="utf-8")
     assert "manual review" in html.lower() or "Manual review" in html
+
+
+def test_site_nav_relativizes_marks_current_and_plans_missing(tmp_path: Path) -> None:
+    from utxoproof.reports import latest_tax_year, site_nav
+
+    site = tmp_path / "site"
+    (site / "2023").mkdir(parents=True)
+    (site / "2023" / "report.html").write_text("x", encoding="utf-8")
+    (site / "bank").mkdir()
+    page = site / "bank" / "bank.html"
+    page.write_text("x", encoding="utf-8")
+    assert latest_tax_year(site) == 2023
+    items = site_nav(
+        [("Tax 2023", "2023/report.html"), ("Bank review", "bank/bank.html")],
+        site,
+        page,
+    )
+    assert items == [
+        {"title": "Tax 2023", "href": "../2023/report.html", "current": False},
+        {"title": "Bank review", "href": "bank.html", "current": True},
+    ]
+
+
+def test_bank_command_matches_manual_with_reasons(tmp_path: Path) -> None:
+    import csv
+
+    from utxoproof.cli import main
+
+    manual = tmp_path / "manual.csv"
+    with open(manual, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f, fieldnames=["date", "side", "btc", "eur_per_btc", "fee_eur"]
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "date": "2023-02-15",
+                "side": "SELL",
+                "btc": "0.5",
+                "eur_per_btc": "22000",
+                "fee_eur": "0",
+            }
+        )
+    out = tmp_path / "bank"
+    assert (
+        main(
+            [
+                "bank",
+                "--file",
+                str(Path(__file__).parent / "fixtures" / "kbc_2023.csv"),
+                "--type",
+                "kbc",
+                "--manual",
+                str(manual),
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    html = (out / "bank.html").read_text(encoding="utf-8")
+    assert "match [standard]" in html or "standard" in html
+    assert "direction inflow&lt;-&gt;SELL" in html
+    assert "Nothing to review." in html

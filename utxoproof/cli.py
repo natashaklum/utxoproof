@@ -23,6 +23,7 @@ from typing import TypedDict
 from utxoproof import __version__
 from utxoproof.belgian_tax import COMMUNAL_SURCHARGE_DEFAULT, apply_belgian_tax
 from utxoproof.config import Config
+from utxoproof.exchange import ExchangeTx
 from utxoproof.paths import add_data_dir_arg, db_path, evidence_root
 
 
@@ -683,6 +684,7 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--wallet", default="utxoproof_watchonly", help="Synced wallet")
     report.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (funding labels)")
     report.add_argument("--trades", default=None, help="Kraken trades.csv join for ledgers")
+    report.add_argument("--site-root", default=None, help="Data-dir site root (menu + hub links)")
     setup = sub.add_parser("setup", help="Create watch-only wallet, import xpubs")
     setup.add_argument("--rpc-url", default="http://127.0.0.1:8332")
     setup.add_argument("--rpc-user", default="")
@@ -715,6 +717,7 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--price", type=Decimal, default=None, help="BTC/EUR price override")
     status.add_argument("--db", default=None, help="SQLite DB (default: <data-dir>/utxoproof.db)")
     status.add_argument("--out", default=None, help="Output directory for status.html")
+    status.add_argument("--site-root", default=None, help="Data-dir site root (menu + hub links)")
     _add_price_history_arg(status)
     _add_live_prices_arg(status)
     check = sub.add_parser("check", help="Diagnose pool coverage without crashing")
@@ -731,6 +734,7 @@ def build_parser() -> argparse.ArgumentParser:
     advise.add_argument(
         "--min-value", type=Decimal, default=Decimal("0"), help="Min EUR value to show"
     )
+    advise.add_argument("--site-root", default=None, help="Data-dir site root (menu + hub links)")
     _add_live_prices_arg(advise)
     prov = sub.add_parser("provenance", help="Chain-of-custody report for a UTXO")
     prov.add_argument("utxo", help="txid:vout")
@@ -742,6 +746,7 @@ def build_parser() -> argparse.ArgumentParser:
     prov.add_argument("--evidence-dir", default=None, help="Evidence root")
     prov.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (funding labels)")
     prov.add_argument("--trades", default=None, help="Kraken trades.csv join for ledgers")
+    prov.add_argument("--site-root", default=None, help="Data-dir site root (menu + hub links)")
     _add_live_prices_arg(prov)
     port = sub.add_parser("portfolio", help="Entity overview from synced UTXOs")
     port.add_argument("--db", default=None, help="SQLite DB (<data-dir>/utxoproof.db)")
@@ -752,7 +757,23 @@ def build_parser() -> argparse.ArgumentParser:
     port.add_argument("--price", type=Decimal, default=None, help="BTC/EUR price override")
     port.add_argument("--as-of", default=None, help="As-of date YYYY-MM-DD (default: today)")
     port.add_argument("--out", default=None, help="Output directory for overview.html + entities/")
+    port.add_argument("--site-root", default=None, help="Data-dir site root (menu + hub links)")
     _add_live_prices_arg(port)
+    bank = sub.add_parser("bank", help="Bank-statement review page (fiat-leg matches)")
+    bank.add_argument("--file", required=True, help="Bank statement CSV")
+    bank.add_argument(
+        "--type",
+        required=True,
+        choices=["ing", "kbc", "bnp", "belfius", "argenta"],
+        help="Statement profile",
+    )
+    bank.add_argument("--manual", default=None, help="Manual CSV for fiat-leg matching")
+    bank.add_argument("--db", default=None, help="SQLite DB (chain links need --ledgers too)")
+    bank.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (chain funding)")
+    bank.add_argument("--trades", default=None, help="Kraken trades.csv join for ledgers")
+    bank.add_argument("--provenance-dir", default=None, help="Link matches to existing pages")
+    bank.add_argument("--out", required=True, help="Output directory for bank.html")
+    bank.add_argument("--site-root", default=None, help="Data-dir site root (menu + hub links)")
     attach = sub.add_parser("attach", help="Register a supporting file (scan, PDF, screenshot)")
     attach.add_argument("--file", required=True, help="File to register (copied in)")
     attach.add_argument("--db", default=None, help="SQLite DB (default: <data-dir>/utxoproof.db)")
@@ -815,7 +836,7 @@ def _write_full_from_args(args: argparse.Namespace, communal: Decimal, config: C
             funding_matches = funding_from_ledgers(
                 args.ledgers, db, trades_path=args.trades
             ).matches
-        except ValueError as exc:
+        except (ValueError, OSError) as exc:
             print(f"funding labels skipped: {exc}")
     return write_full_report(
         db=db,
@@ -832,6 +853,7 @@ def _write_full_from_args(args: argparse.Namespace, communal: Decimal, config: C
         portfolio=portfolio,
         price_history_svg=price_history_svg,
         funding=funding_matches,
+        site_root=getattr(args, "site_root", None),
     )
 
 
@@ -945,7 +967,10 @@ def _run_status(args: argparse.Namespace) -> int:
     print(f"value_eur: {status['value_eur']:.2f}")
     print(f"unrealized_eur: {status['unrealized_eur']:.2f}")
     if args.out:
-        target = write_status_page(args.input, price, note, args.out, price_at=history)
+        target = write_status_page(
+            args.input, price, note, args.out, price_at=history,
+            site_root=getattr(args, "site_root", None),
+        )
         print(f"wrote {target}")
     return 0
 
@@ -992,7 +1017,10 @@ def _run_advise(args: argparse.Namespace) -> int:
     summary = portfolio_summary(advisories)
     print(f"liquidate_tax_eur: {summary['total_tax_eur']:.2f}")
     if args.out:
-        target = write_advisory_page(advisories, price, note, as_of.isoformat(), args.out)
+        target = write_advisory_page(
+            advisories, price, note, as_of.isoformat(), args.out,
+            site_root=getattr(args, "site_root", None),
+        )
         print(f"wrote {target}")
     return 0
 
@@ -1059,7 +1087,7 @@ def _run_portfolio(args: argparse.Namespace) -> int:
     funding = FundingResult(matches={})
     try:
         funding = funding_from_ledgers(args.ledgers, db, trades_path=args.trades)
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
         print(f"funding labels skipped: {exc}")
     for line in funding.ambiguous:
         print(f"ambiguous funding: {line} — left unlabeled")
@@ -1074,14 +1102,23 @@ def _run_portfolio(args: argparse.Namespace) -> int:
         history = load_price_series(bundled_history_path())
         sparkline = svg_sparkline(history, label="BTC/EUR daily close, last 12 months")
         overview_target = write_overview_page(
-            portfolio, as_of.isoformat(), note, Path(args.out) / "overview", sparkline
+            portfolio,
+            as_of.isoformat(),
+            note,
+            Path(args.out) / "overview",
+            sparkline,
+            site_root=getattr(args, "site_root", None),
         )
         print(f"wrote {overview_target}")
         flags_by_utxo = {
             f"{a.txid}:{a.vout}": ",".join(sorted(f.value for f in a.flags)) for a in advisories
         }
         for target in write_entity_pages(
-            portfolio, "../provenance", Path(args.out) / "entities", flags_by_utxo
+            portfolio,
+            "../provenance",
+            Path(args.out) / "entities",
+            flags_by_utxo,
+            site_root=getattr(args, "site_root", None),
         ):
             print(f"wrote {target}")
         prov_dir = Path(args.out) / "provenance"
@@ -1095,6 +1132,7 @@ def _run_portfolio(args: argparse.Namespace) -> int:
                 as_of,
                 prov_dir,
                 funding=funding.matches,
+                site_root=getattr(args, "site_root", None),
             )
             print(f"wrote {target}")
     return 0
@@ -1148,7 +1186,7 @@ def _run_provenance(args: argparse.Namespace) -> int:
         funding = FundingResult(matches={})
         try:
             funding = funding_from_ledgers(args.ledgers, db, trades_path=args.trades)
-        except ValueError as exc:
+        except (ValueError, OSError) as exc:
             print(f"funding labels skipped: {exc}")
         target = write_provenance_page(
             db,
@@ -1161,8 +1199,82 @@ def _run_provenance(args: argparse.Namespace) -> int:
             args.depth,
             evidence_root=evidence_root(args),
             funding=funding.matches,
+            site_root=getattr(args, "site_root", None),
         )
         print(f"wrote {target}")
+    return 0
+
+
+def _manual_exchange_txs(csv_path: str | Path) -> list[ExchangeTx]:
+    """Reconstruct matchable BUY/SELL legs from a manual CSV (fiat = btc x price)."""
+    import csv
+
+    txs = []
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            side = str(row.get("side") or "").strip().upper()
+            kind = str(row.get("kind") or side).strip().upper()
+            if kind not in ("BUY", "SELL"):
+                continue
+            try:
+                txs.append(
+                    ExchangeTx(
+                        date=datetime.date.fromisoformat(str(row["date"])[:10]),
+                        kind=kind,
+                        btc=Decimal(str(row["btc"])),
+                        eur_per_btc=Decimal(str(row["eur_per_btc"])),
+                        fee_eur=Decimal(str(row.get("fee_eur") or "0")),
+                        refid=str(row.get("trade_refs") or ""),
+                    )
+                )
+            except (ValueError, KeyError, ArithmeticError):
+                continue
+    return txs
+
+
+def _run_bank(args: argparse.Namespace) -> int:
+    from utxoproof.banks import parse_bank_csv
+    from utxoproof.matching import match_fiat_legs
+    from utxoproof.reports import write_bank_page
+
+    rows = parse_bank_csv(args.file, args.type)
+    txs = _manual_exchange_txs(args.manual) if args.manual else []
+    matches, unmatched = match_fiat_legs(txs, rows) if txs else ([], rows)
+    for m in matches:
+        print(
+            f"match [{m.tier}]: {m.tx.kind} {m.tx.btc} BTC "
+            f"<- {m.bank.description} ({'; '.join(m.reasons)})"
+        )
+    for row in unmatched:
+        print(f"unmatched: {row.date.isoformat()} {row.description} {row.amount_eur} EUR")
+    funding_labels: dict[str, str] = {}
+    if args.db and Path(args.db).is_file() and args.ledgers:
+        from utxoproof.linking import funding_from_ledgers
+
+        try:
+            funding_labels = funding_from_ledgers(
+                args.ledgers, _open_db(str(args.db)), trades_path=args.trades
+            ).matches
+        except (ValueError, OSError) as exc:
+            print(f"funding labels skipped: {exc}")
+    for m in matches:
+        if not m.tx.refid:
+            continue
+        hits = sorted(txid for txid, label in funding_labels.items() if m.tx.refid in label)
+        if len(hits) == 1:
+            m.chain_txid = hits[0]
+        elif hits:
+            print(f"ambiguous chain for trade {m.tx.refid}: {len(hits)} funded txs — left unlinked")
+    target = write_bank_page(
+        args.type,
+        rows,
+        matches,
+        unmatched,
+        args.out,
+        provenance_dir=args.provenance_dir,
+        site_root=getattr(args, "site_root", None),
+    )
+    print(f"wrote {target}")
     return 0
 
 
@@ -1282,7 +1394,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         history = load_price_history(args.price_history)
         if args.alltime:
-            target = write_alltime_page(args.input, args.out, price_at=history)
+            target = write_alltime_page(
+                args.input, args.out, price_at=history,
+                site_root=getattr(args, "site_root", None),
+            )
             print(f"wrote {target}")
             return 0
         if args.year is None:
@@ -1294,6 +1409,7 @@ def main(argv: list[str] | None = None) -> int:
             communal,
             config.classifier,
             price_at=load_price_history(args.price_history),
+            site_root=getattr(args, "site_root", None),
         )
         print(f"wrote {target}")
         if args.full:
@@ -1337,6 +1453,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_provenance(args)
     if args.command == "portfolio":
         return _run_portfolio(args)
+    if args.command == "bank":
+        return _run_bank(args)
     if args.command == "attach":
         return _run_attach(args)
     return 1

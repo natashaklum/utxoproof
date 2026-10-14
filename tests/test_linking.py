@@ -185,3 +185,16 @@ def test_setup_accepts_timestamp_flag() -> None:
         .timestamp
         == "now"
     )
+
+
+def test_deposit_direction_matches_external_spends() -> None:
+    import datetime
+
+    from utxoproof.linking import Withdrawal, match_funding
+
+    dep = Withdrawal("QD", datetime.date(2023, 5, 2), 25_000_000, direction="in")
+    result = match_funding([dep], [("chain-tx", datetime.date(2023, 5, 1), 25_000_000)])
+    assert result.matches == {
+        "chain-tx": "Kraken deposit QD (2023-05-02, 0.25 BTC)"
+    }
+    assert result.unmatched == []
