@@ -27,7 +27,7 @@ set -euo pipefail
 : "${DATA_DIR:=$HOME/utxoproof-data}"
 : "${KRAKEN_LEDGERS:=$HOME/exports/kraken_ledgers.csv}"
 : "${KRAKEN_TRADES:=}"            # empty skips trades join
-: "${BANK_CSV:=}"                 # e.g. "$HOME/exports/kbc.csv"; empty skips bank review
+: "${BANK_CSV:=}"                 # e.g. "kbc:~/exports/kbc.csv ing:~/exports/ing.csv"; empty skips bank review
 : "${BANK_TYPE:=kbc}"             # ing | kbc (=kbc-bankaccount) | kbc-creditcard | bnp | belfius | argenta
 : "${TAX_YEAR:=}"                 # empty = every year present in manual.csv
 : "${BTC_PRICE:=}"                # empty = bundled history close for status
@@ -77,27 +77,94 @@ stage_import() {
 }
 
 # ---------------------------------------------------------------------------
+# Bank statements: BANK_CSV holds space-separated `type:path` specs (bare
+# paths use BANK_TYPE). No spaces or colons inside paths (word splitting).
+# ---------------------------------------------------------------------------
+bank_pair_args() {
+    # Echo repeated flag pairs for one spec list, e.g.
+    #   bank_pair_args --file --type  ->  --file f1 --type t1 --file f2 --type t2
+    file_flag=$1
+    type_flag=$2
+    # shellcheck disable=SC2086
+    for spec in $BANK_CSV; do
+        case "$spec" in
+            *:*)
+                printf '%s\n' "$file_flag"
+                printf '%s\n' "${spec#*:}"
+                printf '%s\n' "$type_flag"
+                printf '%s\n' "${spec%%:*}"
+                ;;
+            *)
+                printf '%s\n' "$file_flag"
+                printf '%s\n' "$spec"
+                printf '%s\n' "$type_flag"
+                printf '%s\n' "$BANK_TYPE"
+                ;;
+        esac
+    done
+}
+
+bank_source_args() {
+    # Echo one --source flag per spec path, for evidence recording.
+    for spec in $BANK_CSV; do
+        case "$spec" in
+            *:*)
+                printf '%s\n' "--source"
+                printf '%s\n' "${spec#*:}"
+                ;;
+            *)
+                printf '%s\n' "--source"
+                printf '%s\n' "$spec"
+                ;;
+        esac
+    done
+}
+
+# ---------------------------------------------------------------------------
 # Stage: bank statement review page (fiat-leg matches, never pool input)
 # ---------------------------------------------------------------------------
 stage_bank() {
     log "bank: statement review page"
-    if [ -n "$BANK_CSV" ]; then
-        [ -f "$BANK_CSV" ] || fail "bank statement not found: $BANK_CSV"
-        "$UTXOPROOF_BIN" import --file "$BANK_CSV" --type "$BANK_TYPE" \
-            --out "$DATA_DIR/bank-rows.csv"
-        if bank_out=$("$UTXOPROOF_BIN" bank --file "$BANK_CSV" --type "$BANK_TYPE" \
-            --manual "$DATA_DIR/manual.csv" --db "$DATA_DIR/utxoproof.db" \
-            --ledgers "$KRAKEN_LEDGERS" \
-            ${KRAKEN_TRADES:+--trades "$KRAKEN_TRADES"} \
-            --provenance-dir "$DATA_DIR/portfolio/provenance" \
-            --out "$DATA_DIR/bank" --site-root "$DATA_DIR" 2>&1); then
-            printf '%s\n' "$bank_out"
-        else
-            log "warning: bank review skipped (see output above)"
-            printf '%s\n' "$bank_out"
-        fi
-    else
+    if [ -z "$BANK_CSV" ]; then
         log "note: bank review skipped (set BANK_CSV to enable)"
+        return 0
+    fi
+    # shellcheck disable=SC2086,SC2046
+    merged=$(bank_pair_args --file --type)
+    # shellcheck disable=SC2086
+    set -- $merged
+    n=0
+    first=1
+    while [ $# -ge 4 ] && [ "$1" = "--file" ] && [ "$3" = "--type" ]; do        f=$2
+        t=$4
+        [ -f "$f" ] || fail "bank statement not found: $f"
+        n=$((n + 1))
+        part="$DATA_DIR/bank-rows-$n.csv"
+        "$UTXOPROOF_BIN" import --file "$f" --type "$t" --out "$part"
+        if [ "$first" -eq 1 ]; then
+            cp "$part" "$DATA_DIR/bank-rows.csv"
+            first=0
+        else
+            tail -n +2 "$part" >> "$DATA_DIR/bank-rows.csv"
+        fi
+        rm -f "$part"
+        shift 4
+    done
+    if [ "$n" -eq 0 ]; then
+        log "note: bank review skipped (no parseable BANK_CSV specs)"
+        return 0
+    fi
+    # shellcheck disable=SC2086,SC2046
+    if bank_out=$("$UTXOPROOF_BIN" bank $(bank_pair_args --file --type) \
+        --manual "$DATA_DIR/manual.csv" --db "$DATA_DIR/utxoproof.db" \
+        --ledgers "$KRAKEN_LEDGERS" \
+        ${KRAKEN_TRADES:+--trades "$KRAKEN_TRADES"} \
+        --provenance-dir "$DATA_DIR/portfolio/provenance" \
+        --out "$DATA_DIR/bank" --site-root "$DATA_DIR" 2>&1); then
+        printf '%s\n' "$bank_out"
+    else
+        log "warning: bank review skipped (see output above)"
+        printf '%s\n' "$bank_out"
     fi
 }
 
@@ -188,7 +255,7 @@ stage_portfolio() {
                 --price "${BTC_PRICE:-40000}" \
                 ${KRAKEN_LEDGERS:+--ledgers "$KRAKEN_LEDGERS"} \
                 ${KRAKEN_TRADES:+--trades "$KRAKEN_TRADES"} \
-                ${BANK_CSV:+--bank-csv "$BANK_CSV" --bank-type "$BANK_TYPE"} \
+                $(bank_pair_args --bank-csv --bank-type) \
                 --site-root "$DATA_DIR" \
                 --out "$DATA_DIR/portfolio" 2>&1); then
                 printf '%s\n' "$port_out"
@@ -218,16 +285,16 @@ stage_report() {
             "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --year "$TAX_YEAR" \
                 --config "$CONFIG_FILE" --source "$KRAKEN_LEDGERS" \
                 ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
-                ${BANK_CSV:+--source "$BANK_CSV"} \
-                ${BANK_CSV:+--bank-csv "$BANK_CSV" --bank-type "$BANK_TYPE"} \
+                $(bank_source_args) \
+                $(bank_pair_args --bank-csv --bank-type) \
                 --site-root "$DATA_DIR" \
                 --out "$DATA_DIR/$TAX_YEAR"
         else
             "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --year "$TAX_YEAR" \
                 --source "$KRAKEN_LEDGERS" \
                 ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
-                ${BANK_CSV:+--source "$BANK_CSV"} \
-                ${BANK_CSV:+--bank-csv "$BANK_CSV" --bank-type "$BANK_TYPE"} \
+                $(bank_source_args) \
+                $(bank_pair_args --bank-csv --bank-type) \
                 --site-root "$DATA_DIR" \
                 --out "$DATA_DIR/$TAX_YEAR"
         fi
@@ -237,16 +304,16 @@ stage_report() {
             "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --all-years \
                 --config "$CONFIG_FILE" --source "$KRAKEN_LEDGERS" \
                 ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
-                ${BANK_CSV:+--source "$BANK_CSV"} \
-                ${BANK_CSV:+--bank-csv "$BANK_CSV" --bank-type "$BANK_TYPE"} \
+                $(bank_source_args) \
+                $(bank_pair_args --bank-csv --bank-type) \
                 --site-root "$DATA_DIR" \
                 --out "$DATA_DIR"
         else
             "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --all-years \
                 --source "$KRAKEN_LEDGERS" \
                 ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
-                ${BANK_CSV:+--source "$BANK_CSV"} \
-                ${BANK_CSV:+--bank-csv "$BANK_CSV" --bank-type "$BANK_TYPE"} \
+                $(bank_source_args) \
+                $(bank_pair_args --bank-csv --bank-type) \
                 --site-root "$DATA_DIR" \
                 --out "$DATA_DIR"
         fi

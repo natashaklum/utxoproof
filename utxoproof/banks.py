@@ -131,6 +131,42 @@ def resolve_bank(bank: str) -> str:
     return BANK_ALIASES.get(bank, bank)
 
 
+def split_bank_spec(spec: str, default_type: str) -> tuple[str, str]:
+    """Split a ``type:path`` spec (or bare path using ``default_type``).
+
+    Returns ``(path, type)`` with the type validated. Whitespace around both
+    parts is stripped; paths with spaces are not supported (word splitting).
+    """
+    if ":" in spec:
+        raw_type, _, raw_path = spec.partition(":")
+        path, bank_type = raw_path.strip(), raw_type.strip() or default_type
+    else:
+        path, bank_type = spec.strip(), default_type
+    canonical = resolve_bank(bank_type)
+    if canonical not in BANK_PROFILES:
+        raise ValueError(
+            f"Unknown bank {bank_type!r} in {spec!r}; expected one of {sorted(BANK_TYPES)}"
+        )
+    if not path:
+        raise ValueError(f"Empty path in bank spec {spec!r}")
+    return path, canonical
+
+
+def parse_bank_specs(specs: list[str], default_type: str) -> list[BankRow]:
+    """Parse several statements (``type:path`` or bare paths) into merged rows.
+
+    Every row keeps its own ``source_file`` so merged review stays attributable.
+    """
+    rows: list[BankRow] = []
+    for spec in specs:
+        if not spec.strip():
+            continue
+        path, bank_type = split_bank_spec(spec, default_type)
+        rows.extend(parse_bank_csv(path, bank_type))
+    rows.sort(key=lambda r: (r.date.isoformat(), r.source_file))
+    return rows
+
+
 def _pick(row: dict[str, str], names: tuple[str, ...]) -> str:
     for name in names:
         if name in row and row[name] not in (None, ""):

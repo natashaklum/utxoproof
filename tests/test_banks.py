@@ -85,6 +85,32 @@ def test_kbc_alias_parses_like_bankaccount() -> None:
     )
 
 
+def test_bank_spec_splitting_and_merged_parse(tmp_path: Path) -> None:
+    import shutil
+
+    from utxoproof.banks import parse_bank_specs, split_bank_spec
+
+    assert split_bank_spec("kbc:a.csv", "ing") == ("a.csv", "kbc-bankaccount")
+    assert split_bank_spec("a.csv", "ing") == ("a.csv", "ing")
+    assert split_bank_spec("kbc-creditcard:a.csv", "ing") == (
+        "a.csv",
+        "kbc-creditcard",
+    )
+    with pytest.raises(ValueError, match="Unknown bank"):
+        split_bank_spec("revolut:a.csv", "ing")
+    with pytest.raises(ValueError, match="Empty path"):
+        split_bank_spec("kbc:  ", "ing")
+    ing = tmp_path / "ing.csv"
+    shutil.copy(FIXTURES / "ing_matching.csv", ing)
+    kbc = tmp_path / "kbc.csv"
+    shutil.copy(FIXTURES / "kbc_2023.csv", kbc)
+    rows = parse_bank_specs([f"ing:{ing}", str(kbc)], "kbc-bankaccount")
+    assert len(rows) == 5  # 4 ing + 1 kbc
+    assert {r.source_file for r in rows} == {str(ing), str(kbc)}
+    assert [r.date.isoformat() for r in rows] == sorted(r.date.isoformat() for r in rows)
+    assert parse_bank_specs(["  ", ""], "ing") == []
+
+
 def test_creditcard_crlf_and_foreign_without_rate(tmp_path: Path) -> None:
     raw = (
         "kredietkaart;kaarthouder;uitgavenstaat;datum verrichting;Datum verrekening;"

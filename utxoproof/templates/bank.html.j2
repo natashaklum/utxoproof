@@ -19,18 +19,18 @@
 
 <h2>Statement rows</h2>
 <table>
-  <tr><th>Date</th><th>Description</th><th>Amount (EUR)</th><th>Counterparty</th><th>Reference</th></tr>
+  <tr><th>Date</th><th>Description</th><th>Amount (EUR)</th><th>Counterparty</th><th>Reference</th><th>Source</th></tr>
   {% for r in rows %}
-  <tr><td>{{ r.date }}</td><td>{{ r.description }}</td><td>{{ r.amount }}</td><td><code>{{ r.counterparty }}</code></td><td>{{ r.reference }}</td></tr>
+  <tr><td>{{ r.date }}</td><td>{{ r.description }}</td><td>{{ r.amount }}</td><td><code>{{ r.counterparty }}</code></td><td>{{ r.reference }}</td><td><code>{{ r.source }}</code></td></tr>
   {% endfor %}
 </table>
 
 <h2>Fiat-leg matches</h2>
 {% if matches %}
 <table>
-  <tr><th>Trade</th><th>Trade fiat (EUR)</th><th>Tier</th><th>Why matched</th><th>Statement date</th><th>Description</th><th>Amount (EUR)</th><th>Chain</th></tr>
+  <tr><th>Trade</th><th>Trade fiat (EUR)</th><th>Tier</th><th>Why matched</th><th>Statement date</th><th>Description</th><th>Amount (EUR)</th><th>Source</th><th>Chain</th></tr>
   {% for m in matches %}
-  <tr><td>{{ m.trade }}</td><td>{{ m.trade_fiat }}</td><td>{{ m.tier }}</td><td>{{ m.reasons }}</td><td>{{ m.date }}</td><td>{{ m.description }}</td><td>{{ m.amount }}</td><td>{% if m.chain_href %}<a href="{{ m.chain_href }}"><code>{{ m.chain }}</code></a>{% else %}<code>{{ m.chain }}</code>{% endif %}</td></tr>
+  <tr><td>{{ m.trade }}</td><td>{{ m.trade_fiat }}</td><td>{{ m.tier }}</td><td>{{ m.reasons }}</td><td>{{ m.date }}</td><td>{{ m.description }}</td><td>{{ m.amount }}</td><td><code>{{ m.source }}</code></td><td>{% if m.chain_href %}<a href="{{ m.chain_href }}"><code>{{ m.chain }}</code></a>{% else %}<code>{{ m.chain }}</code>{% endif %}</td></tr>
   {% endfor %}
 </table>
 {% else %}
@@ -40,9 +40,9 @@
 <h2>Unmatched rows (manual review)</h2>
 {% if unmatched %}
 <table>
-  <tr><th>Date</th><th>Description</th><th>Amount (EUR)</th></tr>
+  <tr><th>Date</th><th>Description</th><th>Amount (EUR)</th><th>Source</th></tr>
   {% for r in unmatched %}
-  <tr><td>{{ r.date }}</td><td>{{ r.description }}</td><td>{{ r.amount }}</td></tr>
+  <tr><td>{{ r.date }}</td><td>{{ r.description }}</td><td>{{ r.amount }}</td><td><code>{{ r.source }}</code></td></tr>
   {% endfor %}
 </table>
 {% else %}

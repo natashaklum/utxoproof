@@ -198,8 +198,7 @@ def funding_from_ledgers(
 def funding_trail(
     ledgers_path: str | Path | None,
     db: sqlite3.Connection,
-    bank_csv: str | Path | None,
-    bank_type: str = "kbc",
+    bank_specs: list[tuple[str | Path, str]] | None,
     trades_path: str | Path | None = None,
     window_days: int = 3,
     max_candidates: int = 5,
@@ -208,18 +207,22 @@ def funding_trail(
 
     For every chain tx funding-matched to a Kraken withdrawal, list exact-BTC
     buys predating it, nearest first, each with its bank fiat match (or none).
-    Needs ledgers + bank CSV; either missing yields no candidates (empty list).
-    Raises ledger/bank parse errors instead of guessing — callers catch them.
+    Needs ledgers + at least one bank spec; either missing yields no
+    candidates (empty list). Raises ledger/bank parse errors instead of
+    guessing — callers catch them.
     """
     from utxoproof.banks import parse_bank_csv
     from utxoproof.kraken_csv import parse_kraken_ledgers
     from utxoproof.matching import match_fiat_legs
 
-    if not ledgers_path or not bank_csv:
+    if not ledgers_path or not bank_specs:
         return []
     txs = parse_kraken_ledgers(Path(ledgers_path), trades_path)
     ledgers_name = Path(ledgers_path).name
-    bank_name = Path(bank_csv).name
+    bank_rows = []
+    for bank_csv, bank_type in bank_specs:
+        bank_rows.extend(parse_bank_csv(bank_csv, bank_type))
+    bank_name = ",".join(sorted({str(Path(csv).name) for csv, _ in bank_specs}))
     funding = funding_from_ledgers(ledgers_path, db, window_days, trades_path)
     funded = {
         txid for txid, label in funding.matches.items() if label.startswith("Kraken withdrawal ")
@@ -228,7 +231,7 @@ def funding_trail(
         return []
     buys = [tx for tx in txs if tx.kind == "BUY" and tx.btc > 0]
     buy_sats = {id(tx): int((tx.btc * SAT_PER_BTC).to_integral_value()) for tx in buys}
-    matches, _ = match_fiat_legs(txs, parse_bank_csv(bank_csv, bank_type))
+    matches, _ = match_fiat_legs(txs, bank_rows)
     match_by_tx = {id(m.tx): m for m in matches}
     withdrawals = [w for w in legs_from_txs(txs) if w.direction == "out"]
     by_refid = {w.refid: w for w in withdrawals}

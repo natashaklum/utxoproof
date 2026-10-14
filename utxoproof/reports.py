@@ -691,6 +691,7 @@ def write_bank_page(
                     "amount": f"{r.amount_eur:,.2f}",
                     "counterparty": r.counterparty_iban or "—",
                     "reference": r.reference or "—",
+                    "source": Path(r.source_file).name if r.source_file else "—",
                 }
                 for r in rows
             ],
@@ -703,6 +704,7 @@ def write_bank_page(
                     "date": m.bank.date.isoformat(),
                     "description": m.bank.description,
                     "amount": f"{m.bank.amount_eur:,.2f}",
+                    "source": Path(m.bank.source_file).name if m.bank.source_file else "—",
                     **chain_cell(m),
                 }
                 for m in matches
@@ -712,6 +714,7 @@ def write_bank_page(
                     "date": r.date.isoformat(),
                     "description": r.description,
                     "amount": f"{r.amount_eur:,.2f}",
+                    "source": Path(r.source_file).name if r.source_file else "—",
                 }
                 for r in unmatched
             ],

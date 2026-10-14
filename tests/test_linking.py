@@ -224,12 +224,31 @@ def test_funding_trail_links_withdrawal_to_buy_and_bank(tmp_path: Path) -> None:
     bank = tmp_path / "bank.csv"
     shutil.copy(Path(__file__).parent / "fixtures" / "ing_matching.csv", bank)
     db = _chain_db(tmp_path, "chainrx", "2023-02-01", 100_000_000)
-    trail = funding_trail(ledgers, db, bank, "ing")
+    trail = funding_trail(ledgers, db, [(bank, "ing")])
     assert len(trail) == 1
     cand = trail[0]
     assert (cand.chain_txid, cand.withdrawal_refid, cand.buy_refid) == ("chainrx", "QW", "R1")
     assert cand.bank is not None and cand.bank.tx.refid == "R1"
     assert cand.ledgers_file == "ledgers.csv" and cand.bank_file == "bank.csv"
+
+
+def test_funding_trail_merges_several_bank_files(tmp_path: Path) -> None:
+    import shutil
+
+    from utxoproof.linking import funding_trail
+
+    ledgers = tmp_path / "ledgers.csv"
+    shutil.copy(Path(__file__).parent / "fixtures" / "kraken_ledgers_2023.csv", ledgers)
+    with open(ledgers, "a", encoding="utf-8") as f:
+        f.write("L900,QW,2023-02-01 12:00:00,withdrawal,,currency,XXBT,-1.00000000,0.0,0.0\n")
+    ing = tmp_path / "ing.csv"
+    shutil.copy(Path(__file__).parent / "fixtures" / "ing_matching.csv", ing)
+    kbc = tmp_path / "kbc.csv"
+    shutil.copy(Path(__file__).parent / "fixtures" / "kbc_2023.csv", kbc)
+    db = _chain_db(tmp_path, "chainrx", "2023-02-01", 100_000_000)
+    trail = funding_trail(ledgers, db, [(ing, "ing"), (kbc, "kbc-bankaccount")])
+    assert len(trail) == 1 and trail[0].bank is not None
+    assert trail[0].bank.tx.refid == "R1"
 
 
 def test_funding_trail_empty_without_bank_csv(tmp_path: Path) -> None:
@@ -241,4 +260,5 @@ def test_funding_trail_empty_without_bank_csv(tmp_path: Path) -> None:
     shutil.copy(Path(__file__).parent / "fixtures" / "kraken_ledgers_2023.csv", ledgers)
     db = _chain_db(tmp_path, "chainrx", "2023-02-01", 100_000_000)
     assert funding_trail(ledgers, db, None) == []
-    assert funding_trail(None, db, tmp_path / "bank.csv") == []
+    assert funding_trail(ledgers, db, []) == []
+    assert funding_trail(None, db, [(tmp_path / "bank.csv", "ing")]) == []

@@ -426,8 +426,12 @@ in the description (`+ €X fee`) rather than silently. Every profile header is
 best-effort and **UNVERIFIED against live exports** — columns match by alias lists, so if your export renames a
 header, check whether an alias already covers it and report the exact header
 line otherwise; do not silently hand-edit the CSV. `run.sh` automates this
-with `BANK_CSV` + `BANK_TYPE` (defaults `kbc`): `stage_bank` converts to
-`$DATA_DIR/bank-rows.csv` and attaches the statement as a report `--source`.
+with `BANK_CSV` + `BANK_TYPE`: space-separated `type:path` specs (bare paths
+use `BANK_TYPE`), e.g. `BANK_CSV="kbc:~/exports/kbc.csv ing:~/exports/ing.csv"`.
+`stage_bank` converts each file with its own profile, merges them into one
+`$DATA_DIR/bank-rows.csv` (rows keep their source file), renders one merged
+`bank/` review page, and attaches every statement as a report `--source`.
+Paths with spaces or colons are not supported (word splitting).
 
 Review the converted rows before trusting a year (`description`, `amount_eur`,
 counterparty IBAN, reference). The fuzzy fiat-leg matcher

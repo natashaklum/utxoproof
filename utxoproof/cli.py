@@ -711,8 +711,15 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--wallet", default="utxoproof_watchonly", help="Synced wallet")
     report.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (funding labels)")
     report.add_argument("--trades", default=None, help="Kraken trades.csv join for ledgers")
-    report.add_argument("--bank-csv", default=None, help="Bank statement CSV (funding prologue)")
-    report.add_argument("--bank-type", default="kbc", help="Statement profile for --bank-csv")
+    report.add_argument(
+        "--bank-csv", action="append", default=[], help="Bank statement CSV (repeatable)"
+    )
+    report.add_argument(
+        "--bank-type",
+        action="append",
+        default=[],
+        help="Profile per --bank-csv (one applies to all)",
+    )
     report.add_argument("--site-root", default=None, help="Data-dir site root (menu + hub links)")
     setup = sub.add_parser("setup", help="Create watch-only wallet, import xpubs")
     setup.add_argument("--rpc-url", default="http://127.0.0.1:8332")
@@ -775,8 +782,15 @@ def build_parser() -> argparse.ArgumentParser:
     prov.add_argument("--evidence-dir", default=None, help="Evidence root")
     prov.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (funding labels)")
     prov.add_argument("--trades", default=None, help="Kraken trades.csv join for ledgers")
-    prov.add_argument("--bank-csv", default=None, help="Bank statement CSV (funding prologue)")
-    prov.add_argument("--bank-type", default="kbc", help="Statement profile for --bank-csv")
+    prov.add_argument(
+        "--bank-csv", action="append", default=[], help="Bank statement CSV (repeatable)"
+    )
+    prov.add_argument(
+        "--bank-type",
+        action="append",
+        default=[],
+        help="Profile per --bank-csv (one applies to all)",
+    )
     prov.add_argument("--site-root", default=None, help="Data-dir site root (menu + hub links)")
     _add_live_prices_arg(prov)
     port = sub.add_parser("portfolio", help="Entity overview from synced UTXOs")
@@ -785,20 +799,30 @@ def build_parser() -> argparse.ArgumentParser:
     port.add_argument("--wallet", default="utxoproof_watchonly", help="Synced wallet")
     port.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (funding labels)")
     port.add_argument("--trades", default=None, help="Kraken trades.csv join for ledgers")
-    port.add_argument("--bank-csv", default=None, help="Bank statement CSV (funding prologue)")
-    port.add_argument("--bank-type", default="kbc", help="Statement profile for --bank-csv")
+    port.add_argument(
+        "--bank-csv", action="append", default=[], help="Bank statement CSV (repeatable)"
+    )
+    port.add_argument(
+        "--bank-type",
+        action="append",
+        default=[],
+        help="Profile per --bank-csv (one applies to all)",
+    )
     port.add_argument("--price", type=Decimal, default=None, help="BTC/EUR price override")
     port.add_argument("--as-of", default=None, help="As-of date YYYY-MM-DD (default: today)")
     port.add_argument("--out", default=None, help="Output directory for overview.html + entities/")
     port.add_argument("--site-root", default=None, help="Data-dir site root (menu + hub links)")
     _add_live_prices_arg(port)
     bank = sub.add_parser("bank", help="Bank-statement review page (fiat-leg matches)")
-    bank.add_argument("--file", required=True, help="Bank statement CSV")
+    bank.add_argument(
+        "--file", required=True, action="append", help="Bank statement CSV (repeatable)"
+    )
     bank.add_argument(
         "--type",
-        required=True,
+        action="append",
+        default=[],
         choices=list(BANK_TYPES),
-        help="Statement profile",
+        help="Statement profile per --file (one applies to all)",
     )
     bank.add_argument("--manual", default=None, help="Manual CSV for fiat-leg matching")
     bank.add_argument("--db", default=None, help="SQLite DB (chain links need --ledgers too)")
@@ -827,6 +851,29 @@ def _open_db(path: str) -> sqlite3.Connection:
     return db
 
 
+def _aligned_bank_specs(
+    files: list[str], types: list[str], default_type: str = "kbc"
+) -> list[tuple[str | Path, str]]:
+    """Pair repeatable file flags with profile flags as ``(path, type)`` specs.
+
+    One type applies to every file; otherwise counts must match. Types are
+    returned as given (aliases resolve at parse time).
+    """
+    if not files:
+        return []
+    if len(types) == 1:
+        applied = types * len(files)
+    elif len(types) == len(files):
+        applied = types
+    elif not types:
+        applied = [default_type] * len(files)
+    else:
+        raise ValueError(
+            f"{len(files)} bank files but {len(types)} --bank-type flags: give one or one per file"
+        )
+    return list(zip(files, applied, strict=True))
+
+
 def _trail_for(args: argparse.Namespace, db: sqlite3.Connection) -> list[TrailCandidate]:
     """Fiat funding trail for provenance pages (empty when not requested).
 
@@ -835,14 +882,14 @@ def _trail_for(args: argparse.Namespace, db: sqlite3.Connection) -> list[TrailCa
     """
     from utxoproof.linking import funding_trail
 
-    if not getattr(args, "ledgers", None) or not getattr(args, "bank_csv", None):
+    bank_csv = getattr(args, "bank_csv", None) or []
+    if not getattr(args, "ledgers", None) or not bank_csv:
         return []
     try:
         return funding_trail(
             args.ledgers,
             db,
-            args.bank_csv,
-            getattr(args, "bank_type", "kbc") or "kbc",
+            _aligned_bank_specs(bank_csv, getattr(args, "bank_type", None) or []),
             trades_path=getattr(args, "trades", None),
         )
     except (ValueError, OSError) as exc:
@@ -1321,7 +1368,15 @@ def _run_bank(args: argparse.Namespace) -> int:
     from utxoproof.matching import match_fiat_legs
     from utxoproof.reports import write_bank_page
 
-    rows = parse_bank_csv(args.file, args.type)
+    specs = _aligned_bank_specs(args.file, args.type or [])
+    rows = []
+    for path, bank_type in specs:
+        parsed = parse_bank_csv(path, bank_type)
+        if not parsed:
+            print(f"warning: {path} parsed 0 rows as {bank_type} — wrong --type?")
+        rows.extend(parsed)
+    rows.sort(key=lambda r: (r.date.isoformat(), r.source_file))
+    title = "+".join(sorted({bank_type for _, bank_type in specs}))
     txs = _manual_exchange_txs(args.manual) if args.manual else []
     matches, unmatched = match_fiat_legs(txs, rows) if txs else ([], rows)
     for m in matches:
@@ -1350,7 +1405,7 @@ def _run_bank(args: argparse.Namespace) -> int:
         elif hits:
             print(f"ambiguous chain for trade {m.tx.refid}: {len(hits)} funded txs — left unlinked")
     target = write_bank_page(
-        args.type,
+        title,
         rows,
         matches,
         unmatched,

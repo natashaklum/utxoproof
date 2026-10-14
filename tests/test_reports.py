@@ -386,3 +386,82 @@ def test_bank_page_review_donut(tmp_path: Path) -> None:
     assert "Review progress" in html
     assert "conic-gradient" in html
     assert "matched" in html and "unmatched" in html
+
+
+def test_bank_command_merges_several_statements(tmp_path: Path) -> None:
+    from utxoproof.cli import main
+
+    out = tmp_path / "bank"
+    assert (
+        main(
+            [
+                "bank",
+                "--file",
+                str(Path(__file__).parent / "fixtures" / "kbc_2023.csv"),
+                "--type",
+                "kbc",
+                "--file",
+                str(Path(__file__).parent / "fixtures" / "ing_2023.csv"),
+                "--type",
+                "ing",
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    html = (out / "bank.html").read_text(encoding="utf-8")
+    assert "BINANCE storting" in html
+    assert "kbc_2023.csv" in html and "ing_2023.csv" in html
+
+
+def test_bank_command_single_type_applies_to_all_files(tmp_path: Path, capsys) -> None:
+    from utxoproof.cli import main
+
+    out = tmp_path / "bank"
+    assert (
+        main(
+            [
+                "bank",
+                "--file",
+                str(Path(__file__).parent / "fixtures" / "kbc_2023.csv"),
+                "--file",
+                str(Path(__file__).parent / "fixtures" / "kbc_creditcard_2023.csv"),
+                "--type",
+                "kbc",
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    # One type applies to every file; the card-shaped file parses 0 rows, loudly.
+    assert "parsed 0 rows as kbc" in capsys.readouterr().out
+    html = (out / "bank.html").read_text(encoding="utf-8")
+    assert "BINANCE storting" in html
+    assert "FAKE*Shop" not in html
+
+
+def test_bank_command_mismatched_counts_abort() -> None:
+    import pytest
+
+    from utxoproof.cli import main
+
+    with pytest.raises(ValueError, match="2 bank files but 3 --bank-type"):
+        main(
+            [
+                "bank",
+                "--file",
+                "a.csv",
+                "--file",
+                "b.csv",
+                "--type",
+                "kbc",
+                "--type",
+                "ing",
+                "--type",
+                "kbc",
+                "--out",
+                "out",
+            ]
+        )

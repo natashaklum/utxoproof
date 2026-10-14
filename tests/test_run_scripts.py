@@ -176,3 +176,35 @@ def test_refresh_bank_page_links_nav_and_matches(tmp_path: Path) -> None:
     assert '<nav class="site-nav">' in report_text
     assert "../bank/bank.html" in report_text  # tax page reaches bank review
     assert "<strong>Tax 2023</strong>" in report_text
+
+
+def test_refresh_merges_several_bank_statements(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    kbc = FIXTURES / "kbc_2023.csv"
+    ing = FIXTURES / "ing_2023.csv"
+    proc = _run(
+        "run.sh",
+        {
+            "DATA_DIR": str(data),
+            "KRAKEN_LEDGERS": str(FIXTURES / "kraken_ledgers_2023.csv"),
+            "KRAKEN_TRADES": "",
+            "BANK_CSV": f"kbc:{kbc} ing:{ing}",
+            "BANK_TYPE": "kbc",
+            "TAX_YEAR": "2023",
+            "BTC_PRICE": "40000",
+            "MODE": "refresh",
+        },
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    merged = (data / "bank-rows.csv").read_text(encoding="utf-8")
+    assert "BINANCE storting" in merged
+    assert "KRAKEN overschrijving" in merged
+    html = (data / "bank" / "bank.html").read_text(encoding="utf-8")
+    assert "kbc_2023.csv" in html and "ing_2023.csv" in html
+    zips = list((data / "2023").glob("utxoproof_evidence_2023_*.zip"))
+    assert len(zips) == 1
+    import zipfile
+
+    names = zipfile.ZipFile(zips[0]).namelist()
+    assert any("kbc_2023.csv" in n for n in names)
+    assert any("ing_2023.csv" in n for n in names)
