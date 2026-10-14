@@ -117,7 +117,10 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
 - Exchanges: `kraken_csv` / `coinbase_csv` / `binance_csv` / `bisq_csv` yield
   `exchange.ExchangeTx` (Bisq defaults non_kyc). Banks: `banks.py` profile
   engine (headers UNVERIFIED, alias-driven); `matching.py` fiat-leg matcher
-  (skeleton: review-only, no production callers). Bank rows are evidence, never
+  (skeleton: review-only, no production callers). Bank ids are explicit
+  (`kbc-bankaccount`, `kbc-creditcard`; `kbc` kept as alias): card exports get
+  their own profile (split credit/debit, merchant iso IBAN, settlement date),
+  card numbers/holders never ingested, non-EUR rows without a rate abort. Bank rows are evidence, never
   pool input; `run.sh` converts via `BANK_CSV`/`BANK_TYPE` into bank-rows.csv +
   report `--source`; demo bank page + `kbc-checking` entity via `write_bank_page`.
   All non-Kraken shapes are best-effort fixtures for later correction.

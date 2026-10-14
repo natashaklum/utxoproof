@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import TypedDict
 
 from utxoproof import __version__
+from utxoproof.banks import BANK_TYPES
 from utxoproof.belgian_tax import COMMUNAL_SURCHARGE_DEFAULT, apply_belgian_tax
 from utxoproof.config import Config
 from utxoproof.exchange import ExchangeTx
@@ -646,11 +647,7 @@ def build_parser() -> argparse.ArgumentParser:
             "coinbase",
             "binance",
             "bisq",
-            "ing",
-            "kbc",
-            "bnp",
-            "belfius",
-            "argenta",
+            *BANK_TYPES,
         ],
         help="Source type (exchanges -> manual CSV; banks -> bank rows CSV)",
     )
@@ -800,7 +797,7 @@ def build_parser() -> argparse.ArgumentParser:
     bank.add_argument(
         "--type",
         required=True,
-        choices=["ing", "kbc", "bnp", "belfius", "argenta"],
+        choices=list(BANK_TYPES),
         help="Statement profile",
     )
     bank.add_argument("--manual", default=None, help="Manual CSV for fiat-leg matching")
@@ -1380,7 +1377,7 @@ def _run_attach(args: argparse.Namespace) -> int:
 
 
 def _run_import(args: argparse.Namespace) -> int:
-    from utxoproof.banks import BANK_PROFILES, parse_bank_csv
+    from utxoproof.banks import BANK_TYPES, parse_bank_csv
     from utxoproof.binance_csv import parse_binance_csv
     from utxoproof.bisq_csv import parse_bisq_csv
     from utxoproof.coinbase_csv import parse_coinbase_csv
@@ -1416,7 +1413,7 @@ def _run_import(args: argparse.Namespace) -> int:
             for tx in txs:
                 tx.kyc_status = args.kyc
         rows = to_manual_csv_rows(txs)
-    elif args.type in BANK_PROFILES:
+    elif args.type in BANK_TYPES:
         bank_rows = parse_bank_csv(args.file, args.type)
         rows = [
             {

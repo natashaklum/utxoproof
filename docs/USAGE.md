@@ -410,9 +410,20 @@ you know the opening position.
 .venv/bin/utxoproof import --file ~/kbc-checking.csv --type kbc --out /tmp/utxo/bank-rows.csv
 ```
 
-Supported types: `ing`, `kbc`, `bnp`, `belfius`, `argenta` (all `;`-delimited,
-BOM-tolerant). Every profile header is best-effort and **UNVERIFIED against
-live exports** — columns match by alias lists, so if your export renames a
+Supported types: `ing`, `kbc-bankaccount`, `kbc-creditcard`, `bnp`, `belfius`,
+`argenta` (all `;`-delimited, BOM-tolerant; plain `kbc` still works as an alias
+for `kbc-bankaccount`). Checking and savings accounts share one export shape
+per bank, so one profile covers both — **credit cards do not**: KBC card
+exports (Dutch, observed 2025) split credit/debit columns, name the merchant
+instead of an IBAN, and settle on `Datum verrekening` (used as the row date,
+consistent with booking-date semantics). Amount resolution is documented in
+`banks.py` and pinned by tests: pre-converted `bedrag in EUR` wins, else the
+populated credit/debit leg (abs + applied sign, robust to signed and unsigned
+layouts), else `bedrag` converted at the row `koers` — a non-EUR row without
+a rate aborts loudly instead of guessing FX. Card numbers, holder names and
+other PII columns are deliberately never ingested; non-zero card fees surface
+in the description (`+ €X fee`) rather than silently. Every profile header is
+best-effort and **UNVERIFIED against live exports** — columns match by alias lists, so if your export renames a
 header, check whether an alias already covers it and report the exact header
 line otherwise; do not silently hand-edit the CSV. `run.sh` automates this
 with `BANK_CSV` + `BANK_TYPE` (defaults `kbc`): `stage_bank` converts to

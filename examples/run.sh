@@ -28,7 +28,7 @@ set -euo pipefail
 : "${KRAKEN_LEDGERS:=$HOME/exports/kraken_ledgers.csv}"
 : "${KRAKEN_TRADES:=}"            # empty skips trades join
 : "${BANK_CSV:=}"                 # e.g. "$HOME/exports/kbc.csv"; empty skips bank review
-: "${BANK_TYPE:=kbc}"             # ing | kbc | bnp | belfius | argenta
+: "${BANK_TYPE:=kbc}"             # ing | kbc (=kbc-bankaccount) | kbc-creditcard | bnp | belfius | argenta
 : "${TAX_YEAR:=}"                 # empty = every year present in manual.csv
 : "${BTC_PRICE:=}"                # empty = bundled history close for status
 : "${CONFIG_FILE:=}"              # e.g. "$DATA_DIR/utxoproof.toml"

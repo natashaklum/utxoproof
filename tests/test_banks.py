@@ -6,7 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from utxoproof.banks import BANK_PROFILES, BankRow, parse_amount, parse_bank_csv
+from utxoproof.banks import (
+    BANK_PROFILES,
+    BANK_TYPES,
+    BankRow,
+    parse_amount,
+    parse_bank_csv,
+    resolve_bank,
+)
 from utxoproof.kraken_csv import parse_kraken_ledgers
 from utxoproof.matching import match_fiat_legs
 
@@ -21,7 +28,17 @@ def test_all_bank_profiles_parse() -> None:
         "belfius": (Decimal("-85.40"), None),
         "argenta": (Decimal("-120.50"), None),
     }
-    assert set(BANK_PROFILES) == {"ing", "kbc", "bnp", "belfius", "argenta"}
+    assert set(BANK_PROFILES) == {
+        "ing",
+        "kbc-bankaccount",
+        "kbc-creditcard",
+        "bnp",
+        "belfius",
+        "argenta",
+    }
+    assert "kbc" in BANK_TYPES  # alias kept working
+    assert resolve_bank("kbc") == "kbc-bankaccount"
+    assert resolve_bank("kbc-creditcard") == "kbc-creditcard"
     for bank, (amount, iban) in expected.items():
         rows = parse_bank_csv(FIXTURES / f"{bank}_2023.csv", bank)
         assert len(rows) >= 1
@@ -39,6 +56,57 @@ def test_parse_amount_formats() -> None:
 def test_unknown_bank_raises() -> None:
     with pytest.raises(ValueError, match="Unknown bank"):
         parse_bank_csv(FIXTURES / "ing_2023.csv", "revolut")
+
+
+def test_kbc_creditcard_split_amounts_merchant_and_pii() -> None:
+    rows = parse_bank_csv(FIXTURES / "kbc_creditcard_2023.csv", "kbc-creditcard")
+    assert len(rows) == 3
+    buy, refund, fx = rows
+    # Dates use settlement (verrekening), amounts keep full precision.
+    assert (buy.date.isoformat(), buy.amount_eur) == ("2023-06-16", Decimal("-42.50"))
+    assert buy.description == "FAKE*Shop — example.com, België"
+    assert buy.counterparty_iban is None
+    assert buy.reference == "Example purchase"
+    # Credit refund: positive, fee surfaced in the description.
+    assert refund.amount_eur == Decimal("92")
+    assert "+ €1.50 fee" in refund.description
+    # Foreign row without a converted figure falls back to bedrag x koers.
+    assert fx.amount_eur == Decimal("-45.000000000")
+    # Card numbers and holder names are never ingested.
+    blob = " ".join(
+        f"{r.description} {r.reference or ''} {r.counterparty_iban or ''}" for r in rows
+    )
+    assert "999999XXXXXX0000" not in blob and "FAKE HOLDER" not in blob
+
+
+def test_kbc_alias_parses_like_bankaccount() -> None:
+    assert parse_bank_csv(FIXTURES / "kbc_2023.csv", "kbc") == parse_bank_csv(
+        FIXTURES / "kbc_2023.csv", "kbc-bankaccount"
+    )
+
+
+def test_creditcard_crlf_and_foreign_without_rate(tmp_path: Path) -> None:
+    raw = (
+        "kredietkaart;kaarthouder;uitgavenstaat;datum verrichting;Datum verrekening;"
+        "bedrag;credit;debet;munt;koers;bedrag in EUR;Kosten op verrichting;"
+        "Handelaar;locatie;land;toelichting\r\n"
+        "1;H;juni 2023;15/06/2023;16/06/2023;-42,50;;-42,50;EUR;1,00;-42,50;0,00;S;e;B;t\r\n"
+    )
+    crlf = tmp_path / "card.csv"
+    crlf.write_bytes(raw.encode("utf-8"))
+    (rows := parse_bank_csv(crlf, "kbc-creditcard"))
+    assert len(rows) == 1 and rows[0].amount_eur == Decimal("-42.50")
+
+    no_rate = tmp_path / "norf.csv"
+    no_rate.write_text(
+        "kredietkaart;kaarthouder;uitgavenstaat;datum verrichting;Datum verrekening;"
+        "bedrag;credit;debet;munt;koers;bedrag in EUR;Kosten op verrichting;"
+        "Handelaar;locatie;land;toelichting\n"
+        "1;H;j 2023;10/07/2023;11/07/2023;50,00;;;USD;;;0,00;S;e;B;t\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="without rate"):
+        parse_bank_csv(no_rate, "kbc-creditcard")
 
 
 def test_fiat_leg_matching() -> None:
