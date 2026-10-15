@@ -150,11 +150,15 @@ covered by end-to-end tests running them against fixtures.
 ## 2d. On-chain wallets and the entity overview
 
 Exchange history alone never shows on-chain UTXOs. With a Bitcoin Core node
-reachable, set `XPUB` + `FINGERPRINT` (master fingerprint, 8 hex) and the RPC
-settings in `run.sh`: `setup` creates the watch-only wallet and imports
-`m/84'/0'/0'`-style descriptors (purpose/coin/account hardened, `/0/*` and
-`/1/*` below the account xpub), then `sync` pulls transactions into
-`utxoproof.db`. Verify with `utxoproof advise --db <data-dir>/utxoproof.db` —
+reachable, set `WALLETS` (pipe-separated `name:fingerprint:xpub` entries,
+e.g. `"cold:ABCD:xpub…|hot:EF12:ypub…"`) — or legacy `XPUB` + `FINGERPRINT` +
+`WALLET` for a single wallet — and the RPC settings in `run.sh`: `setup`
+creates each watch-only wallet and imports `m/84'/0'/0'`-style descriptors
+(purpose/coin/account hardened, `/0/*` and `/1/*` below the account xpub;
+derivation numbers stay global across wallets), then `sync` pulls every
+wallet's transactions into the shared `utxoproof.db`, attributing each output
+to the wallets that list its transaction (shared cold→hot transfers land in
+both). Verify with `utxoproof advise --db <data-dir>/utxoproof.db` —
 one line per unspent output — or `report --full` (advisory + provenance
 sections come from the DB; the tax/status pages stay exchange-CSV based).
 
@@ -178,9 +182,14 @@ derived. Concretely:
 - **What belongs:** one `[[entities]]` per place holding value — `id`
   (stable, URL-safe: it becomes `<id>.html`), `kind` (`wallet` | `bank` |
   `exchange`), human `label`/`detail`, and for exactly the on-chain wallet(s)
-  the `wallet` name matching `setup`/`sync --wallet`. Plus `[[fiat]]` rows:
-  `entity_id`, `amount_eur`, and a `note` carrying the **as-of date and where
-  the figure came from** (e.g. `note = "KBC app balance, 2024-06-01"`).
+  the `wallet` name matching `setup`/`sync --wallet` (several wallets allowed,
+  see `WALLETS` in `run.sh`). Plus `[[fiat]]` rows: `entity_id`, `amount_eur`,
+  an `as_of` balance date, a `note` saying where the figure came from, and
+  optionally `statements = [...]` on the entity pointing at the evidencing
+  files (relative to the TOML file). `fiat-check` audits exactly this:
+  missing/future/stale (`--max-age-days`, default 90) dates and absent
+  statement files warn without halting; it runs as a `run.sh` stage whenever
+  `ENTITIES_FILE` is set.
 - **What does NOT belong:** secrets — no xpubs, no private keys, no RPC
   passwords; the file sits next to your data dir, not a vault, and nothing
   reads secrets from it. No auto-derived balances either: a checking balance
@@ -189,10 +198,13 @@ derived. Concretely:
   human as-of note is a guess, not data. And nothing the tool computes itself
   (cost basis, gains, UTXO values) — those stay derived so they can't drift.
 - **Validation:** unknown `entity_id` in `[[fiat]]` aborts with an error
-  naming the ghost; a file with no `[[entities]]` aborts too. Unspent chain
-  outputs land in the entity whose `wallet` matches the synced wallet, or in
-  the single entity when only one is declared. `utxoproof portfolio` prints
-  the resulting allocation, so misassignment is visible immediately.
+  naming the ghost; a file with no `[[entities]]` aborts too. Each unspent
+  output lands in the entity whose `wallet` matches its attribution (shared
+  self-transfer outputs deterministically take the first sorted match); rows
+  from before attribution existed use the legacy single-owner rule; a synced
+  wallet with no matching entry aborts naming it, never silently misattributes.
+  `utxoproof portfolio` prints the resulting allocation, so misassignment is
+  visible immediately.
 - **Tags (optional):** `[entity_tags]` asserts free tags per entity id
   (inherited by every holding of that entity), `[utxo_tags]` per
   `"txid:vout"` ref (e.g. `"abc123:0" = ["cash", "gift"]`). Use them for what
@@ -264,7 +276,9 @@ utxoproof reconcile --db <data-dir>/utxoproof.db --rpc-url ... --wallet <name>
 ```
 
 which prints `RECONCILED (gap 0)` or `GAP … BTC` instead of eyeballing
-`overview.html` against `getbalances`.
+`overview.html` against `getbalances`. With several wallets, run it once per
+wallet: the DB side counts that wallet's attributed outputs plus legacy
+unattributed rows (flagged, never silently dropped).
 
 ## 3. Configuration (`utxoproof.toml`)
 
@@ -440,10 +454,14 @@ separator. Direct CLI use mirrors it: repeatable `--file`/`--type` pairs, or
 `--bank-list` with one spec per line.
 
 Review the converted rows before trusting a year (`description`, `amount_eur`,
-counterparty IBAN, reference). The fuzzy fiat-leg matcher
-(`match_fiat_legs`: same calendar date ±2 days, exact euro amount) is still a
-skeleton — matches are shown on the bank-review page for eyeballing, and
-unmatched rows are listed for manual review rather than auto-booked. The demo
+counterparty IBAN, reference). The fiat-leg matcher (`match_fiat_legs`) runs
+two passes, exact before approximate, so a near-miss never steals an exact
+match: direction (BUY↔outflow, SELL↔inflow) plus calendar date ±2 days in both
+passes; the exact pass needs euro-cent equality (reference hits raise it to
+`strong`), the approximate pass tolerates bank fees and FX rounding (within
+min(€1, 1%), labeled `approximate` with its Δ). Ties at either tier — and
+anything outside tolerance — stay unmatched for manual review rather than
+auto-booked. The demo
 site's bank page (`bank/bank.html`, KBC fixture) shows exactly this shape.
 
 ## 6. Price history

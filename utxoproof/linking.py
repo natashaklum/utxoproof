@@ -133,34 +133,65 @@ def chain_receives(
     return receives
 
 
+def _sat_tolerance(sats: int) -> int:
+    """Approximate-pass window: fee skims, capped (0.1% of the leg, floor 1000 sats)."""
+    return max(1000, sats // 1000)
+
+
 def match_funding(
     withdrawals: list[Withdrawal],
     receives: list[tuple[str, datetime.date, int]],
     window_days: int = 3,
 ) -> FundingResult:
-    """Match each exchange leg to chain outputs by exact sats + date window.
+    """Match each exchange leg to chain outputs, exact pass before approximate.
 
     Withdrawals (``out``) are receipt candidates; deposits (``in``) are
     external-send candidates — callers pass the matching receive pool.
+    Approximate matches (fee skims within tolerance) carry a ~Δ suffix; ties
+    at either tier are reported, never guessed.
     """
     matches: dict[str, str] = {}
     ambiguous: list[str] = []
     unmatched: list[str] = []
+    linked: set[str] = set()
     for w in withdrawals:
         btc = Decimal(w.sats) / SAT_PER_BTC
-        candidates = sorted(
+        kind = "withdrawal" if w.direction == "out" else "deposit"
+        label = f"Kraken {kind} {w.refid} ({w.date.isoformat()}, {btc:f} BTC)"
+        exact = sorted(
             {
                 txid
                 for txid, day, sats in receives
                 if sats == w.sats and abs((day - w.date).days) <= window_days
             }
         )
+        if len(exact) == 1:
+            matches.setdefault(exact[0], label)
+            linked.add(w.refid)
+        elif exact:
+            ambiguous.append(f"{w.refid}: {len(exact)} candidates ({btc:f} BTC)")
+            linked.add(w.refid)
+    for w in withdrawals:
+        if w.refid in linked:
+            continue
+        btc = Decimal(w.sats) / SAT_PER_BTC
         kind = "withdrawal" if w.direction == "out" else "deposit"
         label = f"Kraken {kind} {w.refid} ({w.date.isoformat()}, {btc:f} BTC)"
-        if len(candidates) == 1:
-            matches.setdefault(candidates[0], label)
-        elif candidates:
-            ambiguous.append(f"{w.refid}: {len(candidates)} candidates ({btc:f} BTC)")
+        cands = sorted(
+            {
+                (txid, abs(sats - w.sats))
+                for txid, day, sats in receives
+                if txid not in matches
+                and sats != w.sats
+                and abs(sats - w.sats) <= _sat_tolerance(w.sats)
+                and abs((day - w.date).days) <= window_days
+            }
+        )
+        if len(cands) == 1:
+            txid, delta = cands[0]
+            matches.setdefault(txid, f"{label} (~Δ{delta} sats)")
+        elif cands:
+            ambiguous.append(f"{w.refid}: {len(cands)} approximate candidates ({btc:f} BTC)")
         else:
             unmatched.append(f"{w.refid} ({btc:f} BTC on {w.date.isoformat()})")
     return FundingResult(matches=matches, ambiguous=ambiguous, unmatched=unmatched)

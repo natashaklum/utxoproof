@@ -17,8 +17,8 @@ FIXTURES = REPO / "tests" / "fixtures"
 def _run(script: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     merged = dict(os.environ)
     merged.update(env)
-    merged["UTXOPROOF_BIN"] = os.path.join(
-        os.path.dirname(__import__("sys").executable), "utxoproof"
+    merged.setdefault(
+        "UTXOPROOF_BIN", os.path.join(os.path.dirname(__import__("sys").executable), "utxoproof")
     )
     # S603/S607: fixed argv (bash + repo-relative script under test); no user input.
     return subprocess.run(  # noqa: S603
@@ -268,3 +268,51 @@ def test_refresh_mixed_encoding_bank_statements(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr[-2000:]
     html = (data / "bank" / "bank.html").read_text(encoding="utf-8")
     assert "BINANCE storting" in html and "KBC Belgiës" in html
+
+
+def test_run_loops_setup_and_sync_per_wallet(tmp_path: Path) -> None:
+    log = tmp_path / "calls.log"
+    stub = tmp_path / "utxoproof"
+    stub.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "STUB $@" >> "$STUB_LOG"\n'
+        'if [ "$1" = "check" ]; then printf "ok\\nshortfalls: 0\\n"; fi\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    env = {
+        "DATA_DIR": str(tmp_path / "data"),
+        "KRAKEN_LEDGERS": str(FIXTURES / "kraken_ledgers_2023.csv"),
+        "KRAKEN_TRADES": "",
+        "TAX_YEAR": "2023",
+        "MODE": "prepare",
+        "ALLOW_SHORTFALLS": "1",
+        "UTXOPROOF_BIN": str(stub),
+        "STUB_LOG": str(log),
+        "WALLETS": "cold:AA:xpub-cold|hot:BB:xpub-hot",
+    }
+    proc = _run("run.sh", env)
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    calls = log.read_text(encoding="utf-8")
+    assert "--wallet cold" in calls and "--xpub xpub-cold" in calls
+    assert "--wallet hot" in calls and "--xpub xpub-hot" in calls
+    assert "--fingerprint AA" in calls and "--fingerprint BB" in calls
+    assert calls.count("sync --db") == 2
+
+
+def test_run_rejects_malformed_wallet_entry(tmp_path: Path) -> None:
+    proc = _run(
+        "run.sh",
+        {
+            "DATA_DIR": str(tmp_path / "data"),
+            "KRAKEN_LEDGERS": str(FIXTURES / "kraken_ledgers_2023.csv"),
+            "KRAKEN_TRADES": "",
+            "TAX_YEAR": "2023",
+            "MODE": "prepare",
+            "ALLOW_SHORTFALLS": "1",
+            "WALLETS": "bogus-without-colons",
+        },
+    )
+    assert proc.returncode != 0
+    assert "bad WALLETS entry" in proc.stdout + proc.stderr

@@ -828,6 +828,16 @@ def build_parser() -> argparse.ArgumentParser:
     port.add_argument("--out", default=None, help="Output directory for overview.html + entities/")
     port.add_argument("--site-root", default=None, help="Data-dir site root (menu + hub links)")
     _add_live_prices_arg(port)
+    fiat_check = sub.add_parser(
+        "fiat-check", help="Audit hand-asserted fiat balances (freshness + evidence)"
+    )
+    fiat_check.add_argument("--entities", required=True, help="Entities TOML file")
+    fiat_check.add_argument(
+        "--as-of", default=None, help="Reference date YYYY-MM-DD (default: today)"
+    )
+    fiat_check.add_argument(
+        "--max-age-days", type=int, default=90, help="Warn when a balance is older (default: 90)"
+    )
     bank = sub.add_parser("bank", help="Bank-statement review page (fiat-leg matches)")
     bank_files = bank.add_mutually_exclusive_group(required=True)
     bank_files.add_argument(
@@ -1073,8 +1083,16 @@ def _run_reconcile(args: argparse.Namespace) -> int:
     db = _open_db(str(db_path(args)))
     db_sats, db_n = db.execute(
         "SELECT COALESCE(SUM(value_sat), 0), COUNT(*) FROM tx_outputs "
-        "WHERE spent_by_txid IS NULL AND is_mine = 1"
+        "WHERE spent_by_txid IS NULL AND is_mine = 1 AND ("
+        "wallet_label IS NULL OR wallet_label = '' "
+        "OR instr(',' || wallet_label || ',', ',' || ? || ',') > 0)",
+        (args.wallet,),
     ).fetchone()
+    unattributed = db.execute(
+        "SELECT COUNT(*) FROM tx_outputs "
+        "WHERE spent_by_txid IS NULL AND is_mine = 1 "
+        "AND (wallet_label IS NULL OR wallet_label = '')"
+    ).fetchone()[0]
     rpc = BitcoinRPC(args.rpc_url, args.rpc_user, args.rpc_password)
     balances = rpc.getbalances(args.wallet)
     node_sats = 0
@@ -1084,6 +1102,11 @@ def _run_reconcile(args: argparse.Namespace) -> int:
     db_btc = Decimal(int(db_sats)) / 100_000_000
     node_btc = Decimal(node_sats) / 100_000_000
     print(f"db_unspent: {int(db_n)} UTXOs, {db_btc:f} BTC")
+    if unattributed:
+        print(
+            f"note: {int(unattributed)} unattributed rows included by legacy "
+            "fallback — sync to attribute"
+        )
     print(f"node: {node_btc:f} BTC (mine+watchonly trusted+pending)")
     gap = node_btc - db_btc
     if gap == 0:
@@ -1310,6 +1333,54 @@ def _run_portfolio(args: argparse.Namespace) -> int:
                 trail=trail,
             )
             print(f"wrote {target}")
+    return 0
+
+
+def _run_fiat_check(args: argparse.Namespace) -> int:
+    """Audit hand-asserted fiat balances: freshness dates + statement evidence.
+
+    Diagnostic like ``check``: warnings printed, exit 0 always. Config errors
+    (unknown entity, malformed date) still raise via ``load_entities``.
+    """
+    from utxoproof.portfolio import load_entities
+
+    entities, fiat = load_entities(args.entities)
+    base = Path(args.entities).expanduser().parent
+    if args.as_of:
+        today = datetime.date.fromisoformat(args.as_of)
+    else:
+        today = datetime.datetime.now(datetime.UTC).date()
+    by_entity = {e.id: e for e in entities}
+    warnings = 0
+    for holding in fiat:
+        entity = by_entity[holding.entity_id]
+        if not holding.as_of:
+            print(f"warning: {holding.entity_id} balance has no as-of date — undated assertion")
+            warnings += 1
+        else:
+            age = (today - datetime.date.fromisoformat(holding.as_of)).days
+            if age < 0:
+                print(f"warning: {holding.entity_id} balance dated in the future ({holding.as_of})")
+                warnings += 1
+            elif age > args.max_age_days:
+                print(
+                    f"warning: {holding.entity_id} balance is {age} days old "
+                    f"({holding.as_of}) — re-assert from the account"
+                )
+                warnings += 1
+        statements = entity.statements
+        if not statements:
+            print(f"warning: {holding.entity_id} has no statement file — balance unverified")
+            warnings += 1
+            continue
+        for statement in statements:
+            candidate = Path(statement)
+            if not candidate.is_absolute():
+                candidate = base / candidate
+            if not candidate.is_file():
+                print(f"warning: {holding.entity_id} statement not found: {statement}")
+                warnings += 1
+    print(f"checked {len(fiat)} holding(s), {warnings} warning(s)")
     return 0
 
 
@@ -1674,6 +1745,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_provenance(args)
     if args.command == "portfolio":
         return _run_portfolio(args)
+    if args.command == "fiat-check":
+        return _run_fiat_check(args)
     if args.command == "bank":
         return _run_bank(args)
     if args.command == "attach":

@@ -380,3 +380,174 @@ def test_overview_renders_behavior_and_channel_donuts(tmp_path: Path) -> None:
     assert "Holdings by funding channel" in html
     assert html.count("conic-gradient") >= 3  # kyc + behavior + channel
     assert "Related reports" not in html  # omitted without siblings
+
+
+def _labeled_db() -> object:
+    db = _sample_db_with_spendable()
+    db.execute("UPDATE tx_outputs SET wallet_label='cold' WHERE txid='C' AND vout=1")
+    db.execute("UPDATE tx_outputs SET wallet_label='hot' WHERE txid='D' AND vout=0")
+    db.commit()
+    return db
+
+
+def _two_wallet_entities() -> list:
+    from utxoproof.portfolio import Entity
+
+    return [
+        Entity("cold", "wallet", "Cold", "", wallet="cold"),
+        Entity("hot", "wallet", "Hot", "", wallet="hot"),
+    ]
+
+
+def test_portfolio_splits_unspent_across_wallet_entities() -> None:
+    import datetime
+
+    from utxoproof.portfolio import portfolio_from_db
+
+    db = _labeled_db()
+    portfolio, _ = portfolio_from_db(
+        db,
+        _two_wallet_entities(),
+        [],
+        "cold",
+        lambda _day: Decimal("20000"),
+        Decimal("40000"),
+        datetime.date(2024, 6, 1),
+    )
+    by_utxo = {f"{u.txid}:{u.vout}": u.entity_id for u in portfolio.utxos}
+    assert by_utxo == {"C:1": "cold", "D:0": "hot"}
+    assert {u.entity_id for u in portfolio.utxos} == {"cold", "hot"}
+    total = sum((u.eur_value for u in portfolio.utxos), Decimal("0"))
+    assert total == portfolio.btc_value_eur  # each UTXO counted exactly once
+
+
+def test_portfolio_shared_output_picks_first_sorted_entity() -> None:
+    import datetime
+
+    from utxoproof.portfolio import portfolio_from_db
+
+    db = _labeled_db()
+    db.execute("UPDATE tx_outputs SET wallet_label='hot,cold' WHERE txid='D' AND vout=0")
+    db.commit()
+    portfolio, _ = portfolio_from_db(
+        db,
+        _two_wallet_entities(),
+        [],
+        "cold",
+        lambda _day: Decimal("20000"),
+        Decimal("40000"),
+        datetime.date(2024, 6, 1),
+    )
+    by_utxo = {f"{u.txid}:{u.vout}": u.entity_id for u in portfolio.utxos}
+    assert by_utxo["D:0"] == "cold"
+
+
+def test_portfolio_unmapped_wallet_raises_naming_it() -> None:
+    import datetime
+
+    import pytest
+
+    from utxoproof.portfolio import portfolio_from_db
+
+    db = _labeled_db()
+    db.execute("UPDATE tx_outputs SET wallet_label='ghost' WHERE txid='D' AND vout=0")
+    db.commit()
+    with pytest.raises(ValueError, match="ghost"):
+        portfolio_from_db(
+            db,
+            _two_wallet_entities(),
+            [],
+            "cold",
+            lambda _day: Decimal("20000"),
+            Decimal("40000"),
+            datetime.date(2024, 6, 1),
+        )
+
+
+def _fiat_entities(
+    tmp_path: Path, fiat_block: str, statements: dict[str, str] | None = None
+) -> Path:
+    cfg = tmp_path / "entities.toml"
+    body = (
+        '[[entities]]\nid = "sav"\nkind = "bank"\nlabel = "Savings"\n'
+        + (f"statements = [{', '.join(repr(s) for s in statements)}]\n" if statements else "")
+        + fiat_block
+    )
+    cfg.write_text(body, encoding="utf-8")
+    if statements:
+        for name, content in statements.items():
+            (tmp_path / name).write_text(content, encoding="utf-8")
+    return cfg
+
+
+def test_fiat_check_fresh_and_evidenced_is_quiet(tmp_path: Path, capsys) -> None:
+    import datetime
+
+    from utxoproof.cli import main
+
+    today = datetime.datetime.now(datetime.UTC).date()
+    cfg = _fiat_entities(
+        tmp_path,
+        '[[fiat]]\nentity_id = "sav"\namount_eur = "100"\nnote = "x"\n'
+        f'as_of = "{today.isoformat()}"\n',
+        {"stmt.csv": "a;b\n"},
+    )
+    assert main(["fiat-check", "--entities", str(cfg)]) == 0
+    out = capsys.readouterr().out
+    assert "checked 1 holding(s), 0 warning(s)" in out
+
+
+def test_fiat_check_warns_stale_undated_unverified_and_future(tmp_path: Path, capsys) -> None:
+    import datetime
+
+    from utxoproof.cli import main
+
+    old = (datetime.datetime.now(datetime.UTC).date() - datetime.timedelta(days=100)).isoformat()
+    future = (datetime.datetime.now(datetime.UTC).date() + datetime.timedelta(days=5)).isoformat()
+    today = datetime.datetime.now(datetime.UTC).date().isoformat()
+    cfg = tmp_path / "entities.toml"
+    cfg.write_text(
+        '[[entities]]\nid = "a"\nkind = "bank"\nlabel = "A"\n'
+        '[[entities]]\nid = "b"\nkind = "bank"\nlabel = "B"\n'
+        '[[entities]]\nid = "c"\nkind = "bank"\nlabel = "C"\n'
+        f'[[fiat]]\nentity_id = "a"\namount_eur = "1"\nas_of = "{old}"\n'
+        '[[fiat]]\nentity_id = "b"\namount_eur = "2"\n'
+        f'[[fiat]]\nentity_id = "c"\namount_eur = "3"\nas_of = "{future}"\n',
+        encoding="utf-8",
+    )
+    assert main(["fiat-check", "--entities", str(cfg), "--as-of", today]) == 0
+    out = capsys.readouterr().out
+    assert "100 days old" in out and "no as-of date" in out and "in the future" in out
+    assert "no statement file" in out  # all three lack statements
+    assert "checked 3 holding(s), 6 warning(s)" in out
+
+
+def test_fiat_check_missing_statement_file_warns(tmp_path: Path, capsys) -> None:
+    import datetime
+
+    from utxoproof.cli import main
+
+    cfg = tmp_path / "entities.toml"
+    today = datetime.datetime.now(datetime.UTC).date().isoformat()
+    cfg.write_text(
+        '[[entities]]\nid = "sav"\nkind = "bank"\nlabel = "S"\nstatements = ["gone.csv"]\n'
+        f'[[fiat]]\nentity_id = "sav"\namount_eur = "1"\nas_of = "{today}"\n',
+        encoding="utf-8",
+    )
+    assert main(["fiat-check", "--entities", str(cfg)]) == 0
+    assert "not found: gone.csv" in capsys.readouterr().out
+
+
+def test_fiat_malformed_as_of_raises(tmp_path: Path) -> None:
+    import pytest
+
+    from utxoproof.portfolio import load_entities
+
+    cfg = tmp_path / "entities.toml"
+    cfg.write_text(
+        '[[entities]]\nid = "sav"\n'
+        '[[fiat]]\nentity_id = "sav"\namount_eur = "1"\nas_of = "06/01/2024"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="must be YYYY-MM-DD"):
+        load_entities(cfg)

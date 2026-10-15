@@ -29,6 +29,7 @@ class Entity:
     detail: str = ""
     wallet: str = ""  # synced on-chain wallet whose UTXOs belong here
     tags: tuple[str, ...] = ()  # user-asserted tags inherited by member holdings
+    statements: tuple[str, ...] = ()  # bank statement files evidencing this entity
 
 
 @dataclass
@@ -51,6 +52,7 @@ class FiatHolding:
     entity_id: str
     amount_eur: Decimal
     note: str = ""
+    as_of: str = ""  # YYYY-MM-DD balance date; empty = undated (warned, never assumed)
 
 
 @dataclass
@@ -276,6 +278,17 @@ def load_price_series(
     return window[::step]
 
 
+def _checked_date(value: str, path: str | Path, what: str) -> str:
+    """Validate an optional YYYY-MM-DD date (empty stays empty, garbage raises)."""
+    if not value:
+        return ""
+    try:
+        datetime.date.fromisoformat(value)
+    except ValueError:
+        raise ValueError(f"{what} as_of {value!r} in {path} must be YYYY-MM-DD") from None
+    return value
+
+
 def load_entities(path: str | Path) -> tuple[list[Entity], list[FiatHolding]]:
     """Parse an entities TOML file (see ``examples/entities.example.toml``).
 
@@ -296,6 +309,7 @@ def load_entities(path: str | Path) -> tuple[list[Entity], list[FiatHolding]]:
             detail=str(e.get("detail", "")),
             wallet=str(e.get("wallet", "")),
             tags=tuple(str(t) for t in e.get("tags", [])),
+            statements=tuple(str(s) for s in e.get("statements", [])),
         )
         for e in data.get("entities", [])
     ]
@@ -306,6 +320,7 @@ def load_entities(path: str | Path) -> tuple[list[Entity], list[FiatHolding]]:
             entity_id=str(f["entity_id"]),
             amount_eur=Decimal(str(f["amount_eur"])),
             note=str(f.get("note", "")),
+            as_of=_checked_date(str(f.get("as_of", "") or ""), path, f"fiat {f.get('entity_id')}"),
         )
         for f in data.get("fiat", [])
     ]
@@ -328,9 +343,11 @@ def portfolio_from_db(
 ) -> tuple[Portfolio, list[UTXOAdvisory]]:
     """Build a ``Portfolio`` from a synced on-chain DB plus entity config.
 
-    Every unspent output lands in the entity whose ``wallet`` matches the
-    synced wallet (falling back to the single entity when only one is
-    declared). Holdings carry generic tags (behavior + channel + mixed +
+    Each unspent output lands in the entity whose ``wallet`` matches one of
+    its ``wallet_label`` attributions (deterministic first on shared
+    self-transfer outputs); unattributed rows (pre-multi-wallet DBs) fall back
+    to the legacy single-owner rule. A labeled wallet with no matching entity
+    raises naming it. Holdings carry generic tags (behavior + channel + mixed +
     entity/UTXO user tags; see ``utxoproof.tags``). Returns ``(portfolio,
     advisories)`` — the advisories carry per-UTXO cost basis, value, KYC
     status and flags for entity pages.
@@ -341,20 +358,35 @@ def portfolio_from_db(
     seed_source_kyc(db)
     propagate_graph(db)
     advisories = analyze_wallet(db, price_at, current_price_eur, as_of)
-    named = [e for e in entities if e.wallet == wallet]
-    if named:
-        owner_id = named[0].id
-    elif len(entities) == 1:
-        owner_id = entities[0].id
-    else:
-        defaulted = [e for e in entities if not e.wallet]
-        owner_id = defaulted[0].id if defaulted else entities[0].id
     from utxoproof.tags import CHANNEL_ORDER, behavior_bucket, channel_of, tags_for
 
     by_entity = {e.id: e for e in entities}
+    by_wallet = {e.wallet: e.id for e in entities if e.wallet}
     utxo_tags = utxo_tags or {}
 
-    def _holding(owner: str, a: UTXOAdvisory) -> UtxoHolding:
+    def _legacy_owner() -> str:
+        named = [e for e in entities if e.wallet == wallet]
+        if named:
+            return named[0].id
+        if len(entities) == 1:
+            return entities[0].id
+        defaulted = [e for e in entities if not e.wallet]
+        return defaulted[0].id if defaulted else entities[0].id
+
+    def _owner_for(a: UTXOAdvisory) -> str:
+        labels = [w for w in (a.wallet_label or "").split(",") if w]
+        if not labels:
+            return _legacy_owner()  # pre-attribution DBs behave exactly as before
+        candidates = sorted({by_wallet[w] for w in labels if w in by_wallet})
+        if candidates:
+            return candidates[0]  # deterministic on shared (self-transfer) outputs
+        raise ValueError(
+            f"wallet(s) {labels} on {a.txid}:{a.vout} match no [[entities]] wallet=; "
+            "add an entry (id/kind/label/wallet) to the entities file"
+        )
+
+    def _holding(a: UTXOAdvisory) -> UtxoHolding:
+        owner = _owner_for(a)
         user = (*by_entity[owner].tags, *utxo_tags.get(f"{a.txid}:{a.vout}", ()))
         asserted = next((t for t in user if t in CHANNEL_ORDER), "")
         return UtxoHolding(
@@ -371,7 +403,7 @@ def portfolio_from_db(
             channel_of(a.source_type, asserted),
         )
 
-    utxos = [_holding(owner_id, a) for a in advisories]
+    utxos = [_holding(a) for a in advisories]
     return (
         Portfolio(
             entities=entities,

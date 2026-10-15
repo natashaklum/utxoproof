@@ -204,3 +204,62 @@ def test_explicit_encoding_and_undecodable_files(tmp_path: Path) -> None:
     undecodable.write_bytes(b"Datum;X\n\x81\n")
     with pytest.raises(ValueError, match="neither UTF-8 nor Windows-1252"):
         parse_bank_csv(undecodable, "kbc")
+
+
+def test_fiat_leg_approximate_fee_difference_links_with_delta() -> None:
+    import datetime
+    from decimal import Decimal
+
+    from utxoproof.banks import BankRow
+    from utxoproof.exchange import ExchangeTx
+    from utxoproof.matching import match_fiat_legs
+
+    tx = ExchangeTx(
+        date=datetime.date(2023, 1, 10),
+        kind="BUY",
+        btc=Decimal("1"),
+        eur_per_btc=Decimal("20000"),
+        fee_eur=Decimal("0"),
+        refid="X",
+    )
+    row = BankRow(
+        date=datetime.date(2023, 1, 10),
+        description="KRAKEN",
+        amount_eur=Decimal("-19999.50"),
+        counterparty_iban="BE68",
+        reference=None,
+    )
+    matches, unmatched = match_fiat_legs([tx], [row])
+    assert len(matches) == 1 and unmatched == []
+    assert matches[0].tier == "approximate"
+    assert any("Δ€0.50" in r for r in matches[0].reasons)
+
+
+def test_fiat_leg_approximate_tie_stays_unmatched() -> None:
+    import datetime
+    from decimal import Decimal
+
+    from utxoproof.banks import BankRow
+    from utxoproof.exchange import ExchangeTx
+    from utxoproof.matching import match_fiat_legs
+
+    tx = ExchangeTx(
+        date=datetime.date(2023, 1, 10),
+        kind="BUY",
+        btc=Decimal("1"),
+        eur_per_btc=Decimal("20000"),
+        fee_eur=Decimal("0"),
+        refid="X",
+    )
+
+    def row(amount: str) -> BankRow:
+        return BankRow(
+            date=datetime.date(2023, 1, 10),
+            description="KRAKEN",
+            amount_eur=Decimal(amount),
+            counterparty_iban="BE68",
+            reference=None,
+        )
+
+    matches, unmatched = match_fiat_legs([tx], [row("-19999.50"), row("-19999.75")])
+    assert matches == [] and len(unmatched) == 2

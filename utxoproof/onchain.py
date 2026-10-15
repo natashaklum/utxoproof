@@ -108,9 +108,10 @@ class BitcoinCoreOnchainImporter:
             summary["txs_seen"] += 1
             txid = str(entry["txid"])
             if txid in seen:
+                self._attribute_tx(txid, wallet)
                 continue
             raw = self._rpc.get_raw_transaction(txid, True, entry.get("blockhash"))
-            self_transfer = self._store_tx(raw, known_addresses)
+            self_transfer = self._store_tx(raw, known_addresses, wallet)
             summary["new_txs"] += 1
             summary["self_transfers"] += int(self_transfer)
             seen.add(txid)
@@ -162,6 +163,22 @@ class BitcoinCoreOnchainImporter:
         self._db.commit()
         return fixed
 
+    def _attribute_tx(self, txid: str, wallet: str) -> None:
+        """Record that ``wallet`` sees ``txid`` (idempotent, appends).
+
+        Shared transactions (e.g. cold→hot self-transfers) accumulate every
+        wallet that lists them, so each wallet's sync backfills attribution
+        for rows stored before multi-wallet existed. Committed by the caller.
+        """
+        self._db.execute(
+            "UPDATE tx_outputs SET wallet_label = CASE "
+            "WHEN wallet_label IS NULL OR wallet_label = '' THEN ? "
+            "WHEN instr(',' || wallet_label || ',', ',' || ? || ',') = 0 "
+            "THEN wallet_label || ',' || ? ELSE wallet_label END "
+            "WHERE txid = ?",
+            (wallet, wallet, wallet, txid),
+        )
+
     def _block_height(self, blockhash: str | None) -> int | None:
         if not blockhash:
             return None
@@ -170,7 +187,9 @@ class BitcoinCoreOnchainImporter:
             self._height_cache[blockhash] = int(header["height"])
         return self._height_cache[blockhash]
 
-    def _store_tx(self, raw: dict[str, Any], known_addresses: set[str] | None) -> bool:
+    def _store_tx(
+        self, raw: dict[str, Any], known_addresses: set[str] | None, wallet: str | None = None
+    ) -> bool:
         txid = str(raw["txid"])
         is_coinbase = any("coinbase" in vin for vin in raw.get("vin", []))
         block_time = raw.get("blocktime", raw.get("time", 0))
@@ -206,6 +225,8 @@ class BitcoinCoreOnchainImporter:
                     int(self._is_mine(address)),
                 ),
             )
+        if wallet is not None:
+            self._attribute_tx(txid, wallet)
         self._db.commit()
         if known_addresses is None or not addresses:
             return False

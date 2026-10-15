@@ -81,10 +81,16 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   `tests/test_run_scripts.py` driving it against fixtures.
 - Entities for the overview come from a TOML file (`examples/entities.example.toml`;
   `load_entities` + `portfolio_from_db` in `utxoproof/portfolio.py`, surfaced via
-  `utxoproof portfolio` and `report --full --entities`); the synced wallet's
-  UTXOs land in the entity whose `wallet` matches.
-- Exchange funding links live in `utxoproof/linking.py` (Kraken withdrawal =
-  exact sats + date window; ambiguous/unmatched reported, never guessed) and
+  `utxoproof portfolio` and `report --full --entities`); each unspent output
+  lands in the entity whose `wallet` matches one of its `wallet_label`
+  attributions (sync stamps every wallet that lists the tx; legacy unlabeled
+  rows use the old single-owner rule; unmapped wallets raise). `[[fiat]]`
+  carries optional `as_of`/`statements`, audited by `utxoproof fiat-check`
+  (freshness + evidence, warn-only `run.sh` stage); `WALLETS="name:fp:xpub|…"`
+  loops setup/sync/reconcile, legacy XPUB vars synthesize one entry.
+- Exchange funding links live in `utxoproof/linking.py` (exact sats + date
+  window first, fee-skim tolerance second with ~Δ labels; ambiguous/unmatched
+  at either tier reported, never guessed) and
   surface as provenance-step evidence (`--ledgers` on `portfolio`/`provenance`/
   `report`); `funding_trail()` extends funded receipts with candidate buys +
   bank matches (`--bank-csv`/`--bank-type`) rendered as a prologue, never fact.
@@ -117,7 +123,8 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
 - Exchanges: `kraken_csv` / `coinbase_csv` / `binance_csv` / `bisq_csv` yield
   `exchange.ExchangeTx` (Bisq defaults non_kyc). Banks: `banks.py` profile
   engine (headers UNVERIFIED, alias-driven); `matching.py` fiat-leg matcher
-  (skeleton: review-only, no production callers). Bank ids are explicit
+  (two passes: exact euro equality, then fee/FX tolerance labeled approximate;
+  review-only). Bank ids are explicit
   (`kbc-bankaccount`, `kbc-creditcard`; `kbc` kept as alias): card exports get
   their own profile (split credit/debit, merchant iso IBAN, settlement date),
   card numbers/holders never ingested, non-EUR rows without a rate abort. Bank rows are evidence, never

@@ -34,6 +34,8 @@ set -euo pipefail
 : "${CONFIG_FILE:=}"              # e.g. "$DATA_DIR/utxoproof.toml"
 : "${XPUB:=}"                     # account xpub/ypub/zpub; empty skips on-chain stages
 : "${FINGERPRINT:=}"             # master fingerprint, 8 hex; paired with XPUB
+: "${WALLETS:=}"                  # pipe-separated name:fp:xpub, e.g. "cold:ABCD:xpub…|hot:EF12:ypub…"
+: "${WALLET:=utxoproof_watchonly}"  # legacy single-wallet name (used when WALLETS is empty)
 : "${RPC_URL:=http://127.0.0.1:8332}"  # bitcoind RPC URL
 : "${RPC_USER:=}"
 : "${RPC_PASSWORD:=}"
@@ -54,7 +56,28 @@ fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 # Debug helper: prints the effective on-chain target. Password is never logged.
 dbg_rpc() {
     if [ -n "$DEBUG" ]; then
-        log "debug: rpc_url=$RPC_URL rpc_user=${RPC_USER:-<none>} wallet=$WALLET bin=$UTXOPROOF_BIN"
+        log "debug: rpc_url=$RPC_URL rpc_user=${RPC_USER:-<none>} wallet=${W:-$WALLET} bin=$UTXOPROOF_BIN"
+    fi
+}
+
+# Wallet entries, one `name:fp:xpub` per line on stdout. Legacy XPUB/FINGERPRINT/
+# WALLET synthesize a single entry when WALLETS is empty; both empty skips
+# on-chain stages. Prints nothing and returns 1 when unconfigured.
+wallet_entries() {
+    if [ -n "$WALLETS" ]; then
+        (
+            IFS='|'
+            set -f
+            # shellcheck disable=SC2086
+            for entry in $WALLETS; do
+                [ -n "$entry" ] || continue
+                printf '%s\n' "$entry"
+            done
+        )
+    elif [ -n "$XPUB" ] && [ -n "$FINGERPRINT" ]; then
+        printf '%s\n' "$WALLET:$FINGERPRINT:$XPUB"
+    else
+        return 1
     fi
 }
 
@@ -102,6 +125,22 @@ write_bank_list() {
         done >> "$DATA_DIR/bank-list.txt"
     )
     [ -s "$DATA_DIR/bank-list.txt" ]
+}
+
+# ---------------------------------------------------------------------------
+# Stage: fiat balance audit (freshness + statement evidence, never halts)
+# ---------------------------------------------------------------------------
+stage_fiat() {
+    log "fiat: audit hand-asserted balances"
+    if [ -n "$ENTITIES_FILE" ]; then
+        [ -f "$ENTITIES_FILE" ] || {
+            log "warning: entities file not found: $ENTITIES_FILE"
+            return 0
+        }
+        "$UTXOPROOF_BIN" fiat-check --entities "$ENTITIES_FILE" || true
+    else
+        log "note: fiat check skipped (set ENTITIES_FILE to enable)"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -204,28 +243,40 @@ stage_compute() {
 }
 
 # ---------------------------------------------------------------------------
-# Stage: setup on-chain wallet
+# Stage: setup on-chain wallets (one `name:fp:xpub` entry each)
 # ---------------------------------------------------------------------------
 stage_setup() {
-    log "setup: initialize on-chain wallet from xpub"
-    if [ -n "$XPUB" ] && [ -n "$FINGERPRINT" ]; then
-        log "setup: wallet $WALLET via $RPC_URL (user ${RPC_USER:-<none>})"
+    log "setup: initialize on-chain wallets from xpubs"
+    entries=$(wallet_entries) || {
+        log "note: setup skipped (set WALLETS or XPUB+FINGERPRINT to enable on-chain stages)"
+        return 0
+    }
+    while IFS= read -r entry || [ -n "$entry" ]; do
+        case "$entry" in
+            "" ) continue ;;
+            *:*:*) ;;
+            *) fail "bad WALLETS entry '$entry' (expected name:fp:xpub)" ;;
+        esac
+        W=${entry%%:*}; rest=${entry#*:}; FP=${rest%%:*}; X=${rest#*:}
+        [ -n "$W" ] && [ -n "$FP" ] && [ -n "$X" ] \
+            || fail "bad WALLETS entry '$W' (expected name:fp:xpub)"
+        log "setup: wallet $W via $RPC_URL (user ${RPC_USER:-<none>})"
         dbg_rpc
         if setup_out=$("$UTXOPROOF_BIN" setup \
             --rpc-url "$RPC_URL" --rpc-user "$RPC_USER" \
             --rpc-password "$RPC_PASSWORD" \
-            --xpub "$XPUB" --fingerprint "$FINGERPRINT" \
-            --wallet "$WALLET" \
+            --xpub "$X" --fingerprint "$FP" \
+            --wallet "$W" \
             --purpose "$PURPOSE" --coin "$COIN" --account "$ACCOUNT" \
             --timestamp "$RESCAN_FROM" 2>&1); then
             printf '%s\n' "$setup_out"
         else
-            log "warning: setup skipped (node unreachable or RPC error)"
+            log "warning: setup skipped for $W (node unreachable or RPC error)"
             printf '%s\n' "$setup_out"
         fi
-    else
-        log "note: setup skipped (set XPUB+FINGERPRINT to enable on-chain stages)"
-    fi
+    done <<EOF
+$entries
+EOF
 }
 
 # ---------------------------------------------------------------------------
@@ -233,20 +284,30 @@ stage_setup() {
 # ---------------------------------------------------------------------------
 stage_sync() {
     log "sync: pull new on-chain transactions into SQLite"
-    if [ -n "$XPUB" ] && [ -n "$FINGERPRINT" ]; then
-        log "sync: wallet $WALLET via $RPC_URL (user ${RPC_USER:-<none>})"
+    entries=$(wallet_entries) || {
+        log "note: on-chain sync skipped (set WALLETS or XPUB+FINGERPRINT to enable)"
+        return 0
+    }
+    while IFS= read -r entry || [ -n "$entry" ]; do
+        case "$entry" in
+            "" ) continue ;;
+            *:*:*) ;;
+            *) fail "bad WALLETS entry '$entry' (expected name:fp:xpub)" ;;
+        esac
+        W=${entry%%:*}
+        log "sync: wallet $W via $RPC_URL (user ${RPC_USER:-<none>})"
         dbg_rpc
         if sync_out=$("$UTXOPROOF_BIN" sync --db "$DATA_DIR/utxoproof.db" \
             --rpc-url "$RPC_URL" --rpc-user "$RPC_USER" \
-            --rpc-password "$RPC_PASSWORD" --wallet "$WALLET" 2>&1); then
+            --rpc-password "$RPC_PASSWORD" --wallet "$W" 2>&1); then
             printf '%s\n' "$sync_out"
         else
-            log "warning: on-chain sync skipped (node unreachable or RPC error)"
+            log "warning: on-chain sync skipped for $W (node unreachable or RPC error)"
             printf '%s\n' "$sync_out"
         fi
-    else
-        log "note: on-chain sync skipped (set XPUB+FINGERPRINT to enable)"
-    fi
+    done <<EOF
+$entries
+EOF
 }
 
 # ---------------------------------------------------------------------------
@@ -372,6 +433,7 @@ case "$MODE" in
         stage_status
         stage_portfolio
         stage_bank
+        stage_fiat
         ;;
     refresh)
         log "mode: refresh (idempotent rerun; shortfalls print but do not stop); years: ${TAX_YEAR:-all in manual.csv}"
@@ -386,6 +448,7 @@ case "$MODE" in
         stage_alltime
         stage_portfolio
         stage_bank
+        stage_fiat
         ;;
     *)
         fail "unknown MODE='$MODE'; use 'prepare' or 'refresh'"

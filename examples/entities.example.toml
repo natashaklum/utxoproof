@@ -27,6 +27,17 @@ label = "Ledger Nano — savings"
 detail = "BIP84 account"
 wallet = "utxoproof_watchonly"
 
+# Second on-chain wallet: sync it via WALLETS="ledger-savings:AA:xpub…|phone:BB:xpub…"
+# in run.sh (legacy XPUB/FINGERPRINT/WALLET synthesize one entry). Each unspent
+# output lands in the entity whose `wallet` matches its attribution; a synced
+# wallet with no entry here aborts the portfolio build naming it.
+# [[entities]]
+# id = "phone-spending"
+# kind = "wallet"
+# label = "Phone spending"
+# detail = "Small hot wallet"
+# wallet = "phone"
+
 [[entities]]
 id = "ing-savings"
 kind = "bank"
@@ -40,11 +51,15 @@ label = "Kraken EUR balance"
 detail = "Uninvested euros"
 
 # Static euro balances (no chain data needed). Assert them yourself from the
-# account on the noted date — never computed from a partial statement.
+# account: as_of is machine-checked by `fiat-check` (stale/missing/future
+# warns), note says where the figure came from. statements lists the
+# evidencing files (relative to this file); entities without any warn as
+# unverified.
 [[fiat]]
 entity_id = "ing-savings"
 amount_eur = "12500"
 note = "ING app balance, 2024-06-01"
+as_of = "2024-06-01"
 
 [[fiat]]
 entity_id = "kraken-eur"

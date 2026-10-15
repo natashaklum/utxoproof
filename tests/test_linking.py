@@ -262,3 +262,39 @@ def test_funding_trail_empty_without_bank_csv(tmp_path: Path) -> None:
     assert funding_trail(ledgers, db, None) == []
     assert funding_trail(ledgers, db, []) == []
     assert funding_trail(None, db, [(tmp_path / "bank.csv", "ing")]) == []
+
+
+def test_funding_approximate_fee_skim_links_with_delta() -> None:
+    from utxoproof.linking import Withdrawal, match_funding
+
+    w = Withdrawal("QW", datetime.date(2023, 5, 2), 100_000_000, direction="out")
+    result = match_funding([w], [("chain-tx", datetime.date(2023, 5, 2), 99_995_000)])
+    assert result.matches == {"chain-tx": "Kraken withdrawal QW (2023-05-02, 1 BTC) (~Δ5000 sats)"}
+    assert result.unmatched == [] and result.ambiguous == []
+
+
+def test_funding_exact_beats_approximate_and_ties_stay_unmatched() -> None:
+    from utxoproof.linking import Withdrawal, match_funding
+
+    day = datetime.date(2023, 5, 2)
+    w = Withdrawal("QW", day, 100_000_000, direction="out")
+    result = match_funding(
+        [w],
+        [("exact-tx", day, 100_000_000), ("near-tx", day, 99_995_000)],
+    )
+    assert set(result.matches) == {"exact-tx"}  # near miss never steals it
+    result = match_funding(
+        [w],
+        [("near-a", day, 99_995_000), ("near-b", day, 99_996_000)],
+    )
+    assert result.matches == {}
+    assert len(result.ambiguous) == 1 and "approximate candidates" in result.ambiguous[0]
+
+
+def test_funding_outside_tolerance_stays_unmatched() -> None:
+    from utxoproof.linking import Withdrawal, match_funding
+
+    w = Withdrawal("QW", datetime.date(2023, 5, 2), 100_000_000, direction="out")
+    result = match_funding([w], [("far-tx", datetime.date(2023, 5, 2), 99_000_000)])
+    assert result.matches == {}
+    assert result.unmatched == ["QW (1 BTC on 2023-05-02)"]
