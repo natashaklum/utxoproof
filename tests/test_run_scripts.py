@@ -176,6 +176,9 @@ def test_refresh_bank_page_links_nav_and_matches(tmp_path: Path) -> None:
     assert '<nav class="site-nav">' in report_text
     assert "../bank/bank.html" in report_text  # tax page reaches bank review
     assert "<strong>Tax 2023</strong>" in report_text
+    alltime_text = (data / "alltime" / "summary.html").read_text(encoding="utf-8")
+    assert '<nav class="site-nav">' in alltime_text
+    assert "../2023/report.html" in alltime_text
 
 
 def test_refresh_merges_several_bank_statements(tmp_path: Path) -> None:

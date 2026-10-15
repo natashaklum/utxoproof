@@ -342,6 +342,7 @@ stage_status() {
 stage_alltime() {
     log "alltime: multi-year summary"
     "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --alltime \
+        --site-root "$DATA_DIR" \
         --out "$DATA_DIR/alltime"
 }
 
