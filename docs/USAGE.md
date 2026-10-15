@@ -412,7 +412,10 @@ you know the opening position.
 
 Supported types: `ing`, `kbc-bankaccount`, `kbc-creditcard`, `bnp`, `belfius`,
 `argenta` (all `;`-delimited, BOM-tolerant; plain `kbc` still works as an alias
-for `kbc-bankaccount`). Checking and savings accounts share one export shape
+for `kbc-bankaccount`). Files decode as UTF-8-SIG first, Windows-1252 second
+(Excel-era Belgian exports: the ë in "België" is byte `0xeb` outside UTF-8) —
+UTF-8 always wins when valid, so previously parseable bytes behave identically;
+anything else aborts naming the file and both codecs. Checking and savings accounts share one export shape
 per bank, so one profile covers both — **credit cards do not**: KBC card
 exports (Dutch, observed 2025) split credit/debit columns, name the merchant
 instead of an IBAN, and settle on `Datum verrekening` (used as the row date,

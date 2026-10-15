@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import csv
 import datetime
+import io
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -241,7 +242,32 @@ def _describe(row: dict[str, str], profile: BankProfile) -> str:
     return desc
 
 
-def parse_bank_csv(path: str | Path, bank: str) -> list[BankRow]:
+def _read_text(path: Path, encoding: str | None) -> str:
+    """Decode a statement file: explicit encoding, else UTF-8-SIG, else Windows-1252.
+
+    Belgian exports come from both UTF-8 and Excel-era Windows-1252 worlds
+    (0xeb-style bytes are e.g. the ë in "België"). UTF-8 is tried first so
+    every previously parseable byte behaves identically; cp1252 as fallback
+    because it was built for exactly this text. Anything else fails loudly
+    naming the file and every codec tried.
+    """
+    raw = path.read_bytes()
+    if encoding is not None:
+        try:
+            return raw.decode(encoding)
+        except (UnicodeDecodeError, LookupError) as exc:
+            raise ValueError(f"{path}: cannot decode as {encoding}: {exc}") from exc
+    try:
+        return raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        pass
+    try:
+        return raw.decode("cp1252")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{path}: neither UTF-8 nor Windows-1252 decodes it: {exc}") from exc
+
+
+def parse_bank_csv(path: str | Path, bank: str, encoding: str | None = None) -> list[BankRow]:
     """Parse one bank statement file with the bank's profile."""
     canonical = resolve_bank(bank)
     if canonical not in BANK_PROFILES:
@@ -249,7 +275,7 @@ def parse_bank_csv(path: str | Path, bank: str) -> list[BankRow]:
     profile = BANK_PROFILES[canonical]
     path = Path(path)
     rows: list[BankRow] = []
-    with open(path, newline="", encoding="utf-8-sig") as f:
+    with io.StringIO(_read_text(path, encoding), newline="") as f:
         reader = csv.DictReader(f, delimiter=";")
         # Strip header whitespace (CRLF exports, padded headers) so aliases match.
         reader.fieldnames = [(name or "").strip() for name in reader.fieldnames or []]

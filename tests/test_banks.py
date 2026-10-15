@@ -176,3 +176,31 @@ def test_fiat_leg_direction_mismatch_never_matches() -> None:
     matches, unmatched = match_fiat_legs(txs, bank_rows)
     assert matches == []
     assert len(unmatched) == len(bank_rows)
+
+
+def test_windows1252_fallback_keeps_utf8_first(tmp_path: Path) -> None:
+    header = "Datum;Omschrijving;Tegenpartijrekening;Bedrag;Mededeling\n"
+    body = "10/01/2023;KBC Belgiës;BE68;20000,00;R1\n"
+    utf8 = tmp_path / "utf8.csv"
+    utf8.write_text(header + body, encoding="utf-8")
+    latin = tmp_path / "latin.csv"
+    latin.write_bytes((header + body).encode("cp1252"))
+    expected = parse_bank_csv(utf8, "kbc-bankaccount")
+    actual = parse_bank_csv(latin, "kbc-bankaccount")
+    assert len(actual) == len(expected) == 1
+    assert actual[0].description == expected[0].description == "KBC Belgiës"
+    assert (actual[0].date, actual[0].amount_eur) == (expected[0].date, expected[0].amount_eur)
+
+
+def test_explicit_encoding_and_undecodable_files(tmp_path: Path) -> None:
+    target = tmp_path / "enc.csv"
+    target.write_text(
+        "Datum;Omschrijving;Tegenpartijrekening;Bedrag;Mededeling\n", encoding="utf-8"
+    )
+    assert parse_bank_csv(target, "kbc", encoding="utf-8") == []
+    with pytest.raises(ValueError, match="cannot decode as nosuch-codec"):
+        parse_bank_csv(target, "kbc", encoding="nosuch-codec")
+    undecodable = tmp_path / "bad.csv"
+    undecodable.write_bytes(b"Datum;X\n\x81\n")
+    with pytest.raises(ValueError, match="neither UTF-8 nor Windows-1252"):
+        parse_bank_csv(undecodable, "kbc")
