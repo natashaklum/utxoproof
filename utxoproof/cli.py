@@ -720,6 +720,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Profile per --bank-csv (one applies to all)",
     )
+    report.add_argument(
+        "--bank-list",
+        default=None,
+        help="File with one type:path (or bare path) spec per line",
+    )
     report.add_argument("--site-root", default=None, help="Data-dir site root (menu + hub links)")
     setup = sub.add_parser("setup", help="Create watch-only wallet, import xpubs")
     setup.add_argument("--rpc-url", default="http://127.0.0.1:8332")
@@ -791,6 +796,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Profile per --bank-csv (one applies to all)",
     )
+    prov.add_argument(
+        "--bank-list",
+        default=None,
+        help="File with one type:path (or bare path) spec per line",
+    )
     prov.add_argument("--site-root", default=None, help="Data-dir site root (menu + hub links)")
     _add_live_prices_arg(prov)
     port = sub.add_parser("portfolio", help="Entity overview from synced UTXOs")
@@ -808,14 +818,25 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Profile per --bank-csv (one applies to all)",
     )
+    port.add_argument(
+        "--bank-list",
+        default=None,
+        help="File with one type:path (or bare path) spec per line",
+    )
     port.add_argument("--price", type=Decimal, default=None, help="BTC/EUR price override")
     port.add_argument("--as-of", default=None, help="As-of date YYYY-MM-DD (default: today)")
     port.add_argument("--out", default=None, help="Output directory for overview.html + entities/")
     port.add_argument("--site-root", default=None, help="Data-dir site root (menu + hub links)")
     _add_live_prices_arg(port)
     bank = sub.add_parser("bank", help="Bank-statement review page (fiat-leg matches)")
-    bank.add_argument(
-        "--file", required=True, action="append", help="Bank statement CSV (repeatable)"
+    bank_files = bank.add_mutually_exclusive_group(required=True)
+    bank_files.add_argument(
+        "--file", action="append", default=[], help="Bank statement CSV (repeatable)"
+    )
+    bank_files.add_argument(
+        "--bank-list",
+        default=None,
+        help="File with one type:path (or bare path) spec per line",
     )
     bank.add_argument(
         "--type",
@@ -874,22 +895,47 @@ def _aligned_bank_specs(
     return list(zip(files, applied, strict=True))
 
 
+def _bank_specs_from_args(args: argparse.Namespace) -> list[tuple[str | Path, str]]:
+    """Bank statement specs from ``--bank-list`` and/or discrete file flags.
+
+    A list file holds one ``type:path`` (or bare path, defaulting to ``kbc``)
+    spec per line — spaces survive because lines are never re-split. Discrete
+    ``--file``/``--type`` (bank command) or ``--bank-csv``/``--bank-type``
+    (trail commands) pairs use the same alignment rule.
+    """
+    from utxoproof.banks import split_bank_spec
+
+    specs: list[tuple[str | Path, str]] = []
+    listfile = getattr(args, "bank_list", None)
+    if listfile:
+        with open(listfile, encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    specs.append(split_bank_spec(line.strip(), "kbc"))
+    files = list(getattr(args, "file", None) or getattr(args, "bank_csv", None) or [])
+    if isinstance(files, str):
+        files = [files]
+    types = list(getattr(args, "type", None) or getattr(args, "bank_type", None) or [])
+    specs.extend(_aligned_bank_specs(files, types))
+    return specs
+
+
 def _trail_for(args: argparse.Namespace, db: sqlite3.Connection) -> list[TrailCandidate]:
     """Fiat funding trail for provenance pages (empty when not requested).
 
-    Needs ``--ledgers`` + ``--bank-csv``; parse failures degrade to a note
-    with no trail, like funding labels.
+    Needs ``--ledgers`` + bank statements (``--bank-csv``/``--bank-type`` or
+    ``--bank-list``); parse failures degrade to a note with no trail.
     """
     from utxoproof.linking import funding_trail
 
-    bank_csv = getattr(args, "bank_csv", None) or []
-    if not getattr(args, "ledgers", None) or not bank_csv:
+    specs = _bank_specs_from_args(args)
+    if not getattr(args, "ledgers", None) or not specs:
         return []
     try:
         return funding_trail(
             args.ledgers,
             db,
-            _aligned_bank_specs(bank_csv, getattr(args, "bank_type", None) or []),
+            specs,
             trades_path=getattr(args, "trades", None),
         )
     except (ValueError, OSError) as exc:
@@ -1368,7 +1414,9 @@ def _run_bank(args: argparse.Namespace) -> int:
     from utxoproof.matching import match_fiat_legs
     from utxoproof.reports import write_bank_page
 
-    specs = _aligned_bank_specs(args.file, args.type or [])
+    specs = _bank_specs_from_args(args)
+    if args.file and not args.type:
+        raise ValueError("bank --file needs --type (one, or one per file)")
     rows = []
     for path, bank_type in specs:
         parsed = parse_bank_csv(path, bank_type)
@@ -1529,7 +1577,8 @@ def _run_report_year(
     if not args.no_zip:
         manifest_db_path = Path(args.out) / "evidence-manifest.db"
         manifest_db = build_manifest_db(manifest_db_path)
-        for source in [args.input, *args.source]:
+        bank_files = [path for path, _ in _bank_specs_from_args(args)]
+        for source in [args.input, *args.source, *bank_files]:
             record_source(manifest_db, source, "source")
         year_dir = evidence_root(args) / str(args.year)
         attached = sorted(year_dir.glob("*")) if year_dir.is_dir() else []
@@ -1541,7 +1590,7 @@ def _run_report_year(
             args.year,
             manifest_db_path,
             target,
-            [Path(s) for s in args.source],
+            [Path(s) for s in args.source] + [Path(f) for f in bank_files],
             [Path(args.input)],
             args.out,
             attachments=attached,

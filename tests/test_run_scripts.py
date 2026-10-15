@@ -188,7 +188,7 @@ def test_refresh_merges_several_bank_statements(tmp_path: Path) -> None:
             "DATA_DIR": str(data),
             "KRAKEN_LEDGERS": str(FIXTURES / "kraken_ledgers_2023.csv"),
             "KRAKEN_TRADES": "",
-            "BANK_CSV": f"kbc:{kbc} ing:{ing}",
+            "BANK_CSV": f"kbc:{kbc}|ing:{ing}",
             "BANK_TYPE": "kbc",
             "TAX_YEAR": "2023",
             "BTC_PRICE": "40000",
@@ -208,3 +208,31 @@ def test_refresh_merges_several_bank_statements(tmp_path: Path) -> None:
     names = zipfile.ZipFile(zips[0]).namelist()
     assert any("kbc_2023.csv" in n for n in names)
     assert any("ing_2023.csv" in n for n in names)
+
+
+def test_refresh_bank_paths_with_spaces(tmp_path: Path) -> None:
+    import shutil
+
+    data = tmp_path / "data"
+    spaced = tmp_path / "my exports"
+    spaced.mkdir()
+    kbc = spaced / "kbc statement.csv"
+    shutil.copy(FIXTURES / "kbc_2023.csv", kbc)
+    proc = _run(
+        "run.sh",
+        {
+            "DATA_DIR": str(data),
+            "KRAKEN_LEDGERS": str(FIXTURES / "kraken_ledgers_2023.csv"),
+            "KRAKEN_TRADES": "",
+            "BANK_CSV": f"kbc:{kbc}",
+            "BANK_TYPE": "kbc",
+            "TAX_YEAR": "2023",
+            "BTC_PRICE": "40000",
+            "MODE": "refresh",
+        },
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    assert (data / "bank" / "bank.html").is_file()
+    html = (data / "bank" / "bank.html").read_text(encoding="utf-8")
+    assert "kbc statement.csv" in html
+    assert "BINANCE storting" in html
