@@ -18,16 +18,23 @@ services:
     volumes:
       - bitcoind_regtest_data:/data/.bitcoin
 
-  # Full-stack local use (mirrors plan Sec. 19; uncomment to run reports here):
+  # Full-stack local use (uncomment to run utxoproof on the regtest network;
+  # run `setup` first). RPC is passed as flags: there is no RPC env var.
   # utxoproof:
   #   build: .
-  #   depends_on:
-  #     - bitcoind
+  #   depends_on: [bitcoind]
   #   volumes:
   #     - ./utxoproof.toml:/app/utxoproof.toml:ro
+  #     - utxoproof_regtest_data:/data
   #   environment:
-  #     - UTXOPROOF_RPC_URL=http://bitcoind:18443
-  #   command: ["sync"]
+  #     - UTXOPROOF_DATA_DIR=/data
+  #   command:
+  #     - sync
+  #     - --rpc-url=http://bitcoind:18443
+  #     - --rpc-user=utxoproof
+  #     - --rpc-password=utxoproof-test
+  #     - --wallet=cold
 
 volumes:
   bitcoind_regtest_data:
+  utxoproof_regtest_data:

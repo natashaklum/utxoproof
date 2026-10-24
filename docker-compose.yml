@@ -32,7 +32,7 @@ services:
     networks:
       - utxoproof_net
     environment:
-      - UTXOPROOF_DB=/data/utxoproof.db
+      - UTXOPROOF_DATA_DIR=/data
     # Run interactively, e.g.:
     # docker compose run --rm utxoproof sync --rpc-url http://bitcoind:8332 ...
 

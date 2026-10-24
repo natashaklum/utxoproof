@@ -27,7 +27,7 @@ set -euo pipefail
 : "${DATA_DIR:=$HOME/utxoproof-data}"
 : "${KRAKEN_LEDGERS:=$HOME/exports/kraken_ledgers.csv}"
 : "${KRAKEN_TRADES:=}"            # empty skips trades join
-: "${BANK_CSV:=}"                 # e.g. "kbc:~/exports/kbc.csv ing:~/exports/ing.csv"; empty skips bank review
+: "${BANK_CSV:=}"                 # "type:path|type:path" specs, e.g. "kbc:~/exports/kbc.csv|ing:~/exports/ing.csv"; empty skips bank review
 : "${BANK_TYPE:=kbc}"             # ing | kbc (=kbc-bankaccount) | kbc-creditcard | bnp | belfius | argenta
 : "${TAX_YEAR:=}"                 # empty = every year present in manual.csv
 : "${BTC_PRICE:=}"                # empty = bundled history close for status
@@ -39,7 +39,6 @@ set -euo pipefail
 : "${RPC_URL:=http://127.0.0.1:8332}"  # bitcoind RPC URL
 : "${RPC_USER:=}"
 : "${RPC_PASSWORD:=}"
-: "${WALLET:=utxoproof_watchonly}"
 : "${PURPOSE:=84}"               # BIP44 purpose
 : "${COIN:=0}"                    # BIP44 coin
 : "${ACCOUNT:=0}"                 # BIP44 account
