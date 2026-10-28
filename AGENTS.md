@@ -62,10 +62,13 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   cost basis is acquisition-date close (rp2 lot integration pending).
   `utxoproof advise --db --price --as-of [--out]`; speculation taint defaults
   off until the Sprint 7 classifier feeds it.
-- Provenance lives in `utxoproof/provenance.py` (backward graph walk, largest
-  parent, cycle guard, depth cap); `utxoproof provenance txid:vout --db
+- Provenance lives in `utxoproof/provenance.py`: `build_provenance_chain` is
+  the shipped largest-parent view; `build_saga` is the all-parent DAG with
+  proportional shares and truncated-share accounting (Sprint 12, not yet
+  rendered). `utxoproof provenance txid:vout --db
   [--price/--as-of/--depth/--out]`. Unrealized gain is omitted from the header
-  (needs lot matching); first-traced value shown instead.
+  (needs lot matching); first-traced value shown instead. Cross-domain saga
+  edges persist in `provenance_links` (schema only so far).
 - Evidence lives in `utxoproof/evidence.py` (SHA-256 manifest, content dedupe,
   ZIP bundle). `utxoproof report --year Y [--source F]...` builds it unless
   `--no-zip`; `report --alltime` writes the per-year summary (no ZIP).

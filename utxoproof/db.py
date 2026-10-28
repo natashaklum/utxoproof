@@ -16,6 +16,8 @@ def init_db(db: sqlite3.Connection) -> None:
 # Migration notes (idempotent; each guarded by PRAGMA table_info):
 # - 2026-10-13: tx_outputs.is_mine (ownership-aware sync; old rows keep 1 =
 #   assumed ours, corrected by the sync ownership pass or `reconcile`).
+# - 2026-10-28: provenance_links (Sprint 12 saga edges). The schema script
+#   creates the table idempotently on old DBs; no column migration is needed.
 def _migrate(db: sqlite3.Connection) -> None:
     cols = {row[1] for row in db.execute("PRAGMA table_info(tx_outputs)").fetchall()}
     if "is_mine" not in cols:

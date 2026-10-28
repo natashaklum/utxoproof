@@ -12,6 +12,7 @@ EXPECTED_TABLES = {
     "sync_state",
     "source_manifest",
     "evidence_links",
+    "provenance_links",
     "advisory_cache",
 }
 
@@ -49,6 +50,42 @@ def test_source_manifest_dedupes_on_sha256() -> None:
     raise AssertionError("duplicate sha256 import was not rejected")
 
 
+def test_provenance_links_default_origin_and_unique_edge() -> None:
+    db = open_memory_db()
+    row = (
+        "D",
+        0,
+        "chain",
+        "C:0",
+        "D:0",
+        "exact",
+        "tx C:0",
+        None,
+        150000000,
+        "2026-10-28T00:00:00+00:00",
+    )
+    db.execute(
+        "INSERT INTO provenance_links "
+        "(utxo_txid, utxo_vout, layer, from_ref, to_ref, confidence, "
+        "evidence_ref, amount_eur, amount_sat, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        row,
+    )
+    stored = db.execute("SELECT origin FROM provenance_links").fetchone()
+    assert stored == ("derived",)
+    try:
+        db.execute(
+            "INSERT INTO provenance_links "
+            "(utxo_txid, utxo_vout, layer, from_ref, to_ref, confidence, "
+            "evidence_ref, amount_eur, amount_sat, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            row,
+        )
+    except sqlite3.IntegrityError:
+        return
+    raise AssertionError("duplicate provenance edge was not rejected")
+
+
 def test_is_mine_defaults_to_ours() -> None:
     db = open_memory_db()
     db.execute("INSERT INTO tx_outputs (txid, vout, value_sat) VALUES ('mine', 0, 100000)")
@@ -68,3 +105,7 @@ def test_migration_adds_is_mine_to_old_db() -> None:
     init_db(db)  # must add the column without touching existing rows
     row = db.execute("SELECT value_sat, is_mine FROM tx_outputs WHERE txid='old'").fetchone()
     assert row == (50000, 1)
+    tables = {
+        row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
+    assert "provenance_links" in tables

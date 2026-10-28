@@ -100,6 +100,28 @@ CREATE TABLE IF NOT EXISTS evidence_links (
     created_at  TEXT NOT NULL
 );
 
+-- ── Provenance links ───────────────────────────────────────────────
+-- One row per cross-domain link in a UTXO saga (plan v7 Sec. 14). Derived
+-- links are rebuilt idempotently; origin='user' rows survive rebuilds.
+-- confidence: exact | approximate | allocated | candidate | rejected.
+
+CREATE TABLE IF NOT EXISTS provenance_links (
+    id            INTEGER PRIMARY KEY,
+    utxo_txid     TEXT NOT NULL,
+    utxo_vout     INTEGER NOT NULL,
+    layer         TEXT NOT NULL,         -- bank | exchange | chain
+    from_ref      TEXT NOT NULL,         -- statement row | ledger refid | txid:vout
+    to_ref        TEXT NOT NULL,
+    confidence    TEXT NOT NULL,
+    evidence_ref  TEXT NOT NULL,         -- file:row / txid / block height
+    amount_eur    TEXT,
+    amount_sat    INTEGER,
+    origin        TEXT NOT NULL DEFAULT 'derived',  -- derived | user
+    note          TEXT NOT NULL DEFAULT '',
+    created_at    TEXT NOT NULL,
+    UNIQUE (utxo_txid, utxo_vout, layer, from_ref, to_ref)
+);
+
 -- ── Advisory cache ─────────────────────────────────────────────────
 -- Derived; can be recomputed at any time.
 
