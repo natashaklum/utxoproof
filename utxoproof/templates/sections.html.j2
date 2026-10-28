@@ -131,22 +131,85 @@ fee skims, or a missing bank statement leave no exact trail.</p>
 {% endif %}
 {% endif %}
 
-<h3>Provenance chain (oldest first)</h3>
-{% if p.truncated %}<p><strong>Note:</strong> chain truncated at {{ p.max_depth }} steps — earliest history not shown. Re-run with a higher depth cap if needed.</p>{% endif %}
+<h3>Saga coverage</h3>
+<p><strong>{{ p.coverage_pct }}</strong> of the target value reaches a bank statement
+through exact, approximate, or allocated links. Weakest tier in a covered path:
+<span class="tier tier-{{ p.weakest_tier if p.weakest_tier != '—' else 'unresolved' }}">{{ p.weakest_tier }}</span>.
+Candidates never raise coverage.</p>
+{% if p.coverage_rows %}
 <table>
-  <tr><th>Step</th><th>Date</th><th>Block</th><th>Event</th><th>BTC</th><th>EUR/BTC</th><th>Value (EUR)</th><th>KYC</th><th>Evidence</th></tr>
+  <tr><th>Source UTXO</th><th>Share of target</th><th>Tier</th></tr>
+  {% for row in p.coverage_rows %}
+  <tr><td><code>{{ row.utxo }}</code></td><td>{{ row.share }}</td><td><span class="tier tier-{{ row.tier }}">{{ row.tier }}</span></td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<h3>Provenance saga (all parents, oldest first)</h3>
+{% if p.truncated %}<p><strong>Note:</strong> saga truncated at {{ p.max_depth }} steps ({{ p.truncated_share }} of target value unresolved) — earliest history not shown. Re-run with a higher depth cap if needed.</p>{% endif %}
+<table>
+  <tr><th>Step</th><th>Date</th><th>Block</th><th>Event</th><th>Share</th><th>Attributed BTC</th><th>Full BTC</th><th>Attributed EUR</th><th>KYC</th><th>Evidence</th></tr>
   {% for s in p.steps %}
-  <tr{% if s.mixing %} class="mixing"{% endif %}><td>{{ s.n }}</td><td>{{ s.date }}</td><td>{{ s.block }}</td><td>{{ s.event }}</td><td>{{ s.btc }}</td><td>{{ s.eur_price }}</td><td>{{ s.eur_value }}</td><td>{{ s.kyc }}</td><td>{{ s.evidence }}</td></tr>
+  <tr{% if s.mixing %} class="mixing"{% endif %}><td>{{ s.n }}</td><td>{{ s.date }}</td><td>{{ s.block }}</td><td>{{ s.event }}{% if s.source %} <span class="tier tier-unresolved">source</span>{% endif %}</td><td>{{ s.share }}</td><td>{{ s.attributed_btc }}</td><td>{{ s.btc }}</td><td>{{ s.attributed_eur }}</td><td>{{ s.kyc }}</td><td>{{ s.evidence }}</td></tr>
   {% endfor %}
 </table>
 
+<h3>Cross-domain evidence</h3>
+<p class="sub">Funding direction: bank debit → exchange EUR deposit → trade → BTC
+withdrawal → chain receipt. These are persisted evidence links; ambiguous legs
+stay unresolved.</p>
+{% if p.evidence_links %}
+<table>
+  <tr><th>Layer</th><th>Confidence</th><th>From</th><th>To</th><th>EUR</th><th>Sats</th><th>Reason</th><th>Evidence</th></tr>
+  {% for l in p.evidence_links %}
+  <tr><td>{{ l.layer }}</td><td><span class="tier tier-{{ l.confidence }}">{{ l.confidence }}</span>{% if l.origin == 'user' %} <span class="sub">(user)</span>{% endif %}</td><td><code>{{ l.from }}</code></td><td><code>{{ l.to }}</code></td><td>{{ l.amount_eur }}</td><td>{{ l.amount_sat }}</td><td>{{ l.note }}</td><td>{{ l.evidence }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No cross-domain evidence links yet. Supply <code>--ledgers</code> and bank
+statements (or run the dashboard with them) to rebuild the bank/exchange layers.</p>
+{% endif %}
+
+<h3>Candidate links (never asserted)</h3>
+{% if p.candidate_links %}
+<table>
+  <tr><th>Layer</th><th>From</th><th>To</th><th>EUR</th><th>Sats</th><th>Reason</th><th>Evidence</th></tr>
+  {% for l in p.candidate_links %}
+  <tr><td>{{ l.layer }}</td><td><code>{{ l.from }}</code></td><td><code>{{ l.to }}</code></td><td>{{ l.amount_eur }}</td><td>{{ l.amount_sat }}</td><td>{{ l.note }}</td><td>{{ l.evidence }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No candidate links. Unmatched or ambiguous funding has no asserted edge.</p>
+{% endif %}
+
+{% if p.unresolved %}
+<h3>Unresolved / truncated legs</h3>
+<ul>
+  {% for note in p.unresolved %}
+  <li>{{ note }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+
 <h3>Branch detail (consolidations)</h3>
 <table>
-  <tr><th>Step</th><th>Parent UTXO</th><th>BTC</th><th>KYC</th></tr>
+  <tr><th>Step</th><th>Parent UTXO</th><th>BTC</th><th>Share</th><th>KYC</th></tr>
   {% for b in p.branches %}
+  <tr><td>{{ b.step }}</td><td><code>{{ b.utxo }}</code></td><td>{{ b.btc }}</td><td>{{ b.share }}</td><td>{{ b.kyc }}</td></tr>
+  {% endfor %}
+</table>
+
+<h3>Fan-out siblings</h3>
+{% if p.siblings %}
+<table>
+  <tr><th>Step</th><th>Sibling UTXO</th><th>BTC</th><th>KYC</th></tr>
+  {% for b in p.siblings %}
   <tr><td>{{ b.step }}</td><td><code>{{ b.utxo }}</code></td><td>{{ b.btc }}</td><td>{{ b.kyc }}</td></tr>
   {% endfor %}
 </table>
+{% else %}
+<p>No sibling outputs in this ancestry.</p>
+{% endif %}
 
 <h3>Evidence references</h3>
 <ul>
@@ -223,6 +286,7 @@ Click an entity to drill into its UTXOs, then a UTXO for provenance.</p>
   <div class="card"><div class="big">{{ o.fiat_total_eur }}</div><div class="sub">cash (EUR)</div></div>
   <div class="card"><div class="big">{{ o.cost_basis_eur }}</div><div class="sub">BTC cost basis (EUR)</div></div>
   <div class="card"><div class="big">{{ o.unrealized_eur }}</div><div class="sub">unrealized gain (EUR)</div></div>
+  <div class="card"><div class="big">{{ o.coverage_pct }}</div><div class="sub">bank-proven BTC value ({{ o.coverage_value_eur }} EUR; candidates excluded)</div></div>
 </div>
 
 <h3>Allocation</h3>
@@ -294,9 +358,9 @@ Click an entity to drill into its UTXOs, then a UTXO for provenance.</p>
 <h3>UTXOs (click for provenance)</h3>
 <p class="sub">Flags = what to do (recommendations). Tags = what it is (classification).</p>
 <table>
-  <tr><th>UTXO</th><th>Address</th><th>BTC</th><th>Value (EUR)</th><th>KYC</th><th>What to do</th><th>What it is</th></tr>
+  <tr><th>UTXO</th><th>Address</th><th>BTC</th><th>Value (EUR)</th><th>KYC</th><th>Coverage</th><th>What to do</th><th>What it is</th></tr>
   {% for u in e.utxos %}
-  <tr><td><a href="{{ u.href }}"><code>{{ u.id }}</code></a></td><td><code>{{ u.address }}</code></td><td>{{ u.btc }}</td><td>{{ u.value }}</td><td>{{ u.kyc }}</td><td>{{ u.flags }}</td><td>{{ u.tags }}</td></tr>
+  <tr><td><a href="{{ u.href }}"><code>{{ u.id }}</code></a></td><td><code>{{ u.address }}</code></td><td>{{ u.btc }}</td><td>{{ u.value }}</td><td>{{ u.kyc }}</td><td><span class="tier tier-{{ u.coverage_tier }}">{{ u.coverage }}</span></td><td>{{ u.flags }}</td><td>{{ u.tags }}</td></tr>
   {% endfor %}
 </table>
 <div>{{ e.utxo_bars | safe }}</div>

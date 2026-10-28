@@ -27,6 +27,7 @@ from utxoproof.config import Config
 from utxoproof.exchange import ExchangeTx
 from utxoproof.linking import TrailCandidate
 from utxoproof.paths import add_data_dir_arg, db_path, evidence_root
+from utxoproof.saga import SagaDocument, SagaSources, build_saga_document, load_saga_sources
 
 
 class DisposalDetail(TypedDict):
@@ -709,7 +710,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     report.add_argument("--entities", default=None, help="Entities TOML (overview section)")
     report.add_argument("--wallet", default="utxoproof_watchonly", help="Synced wallet")
-    report.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (funding labels)")
+    report.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (saga links)")
     report.add_argument("--trades", default=None, help="Kraken trades.csv join for ledgers")
     report.add_argument(
         "--bank-csv", action="append", default=[], help="Bank statement CSV (repeatable)"
@@ -783,9 +784,10 @@ def build_parser() -> argparse.ArgumentParser:
     prov.add_argument("--price", type=Decimal, default=None, help="Current BTC/EUR price")
     prov.add_argument("--as-of", default=None, help="As-of date YYYY-MM-DD (default: today)")
     prov.add_argument("--depth", type=int, default=100, help="Max chain depth")
+    prov.add_argument("--max-nodes", type=int, default=500, help="Max saga nodes (hard cap)")
     prov.add_argument("--out", default=None, help="Output directory")
     prov.add_argument("--evidence-dir", default=None, help="Evidence root")
-    prov.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (funding labels)")
+    prov.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (saga links)")
     prov.add_argument("--trades", default=None, help="Kraken trades.csv join for ledgers")
     prov.add_argument(
         "--bank-csv", action="append", default=[], help="Bank statement CSV (repeatable)"
@@ -807,7 +809,7 @@ def build_parser() -> argparse.ArgumentParser:
     port.add_argument("--db", default=None, help="SQLite DB (<data-dir>/utxoproof.db)")
     port.add_argument("--entities", required=True, help="Entities TOML file")
     port.add_argument("--wallet", default="utxoproof_watchonly", help="Synced wallet")
-    port.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (funding labels)")
+    port.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (saga links)")
     port.add_argument("--trades", default=None, help="Kraken trades.csv join for ledgers")
     port.add_argument(
         "--bank-csv", action="append", default=[], help="Bank statement CSV (repeatable)"
@@ -857,7 +859,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bank.add_argument("--manual", default=None, help="Manual CSV for fiat-leg matching")
     bank.add_argument("--db", default=None, help="SQLite DB (chain links need --ledgers too)")
-    bank.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (chain funding)")
+    bank.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (chain links)")
     bank.add_argument("--trades", default=None, help="Kraken trades.csv join for ledgers")
     bank.add_argument("--provenance-dir", default=None, help="Link matches to existing pages")
     bank.add_argument("--out", required=True, help="Output directory for bank.html")
@@ -953,6 +955,24 @@ def _trail_for(args: argparse.Namespace, db: sqlite3.Connection) -> list[TrailCa
         return []
 
 
+def _saga_sources_from_args(args: argparse.Namespace) -> SagaSources | None:
+    """Parsed ledgers + bank rows for a saga rebuild (None when unavailable)."""
+    if not getattr(args, "ledgers", None):
+        return None
+    try:
+        specs = _bank_specs_from_args(args)
+        return load_saga_sources(
+            args.ledgers,
+            trades_path=getattr(args, "trades", None),
+            bank_specs=specs,
+        )
+    except (ValueError, OSError) as exc:
+        # A supplied source that cannot be parsed must not leave stale derived
+        # evidence behind: rebuild with an empty source set (user rows stay).
+        print(f"saga links cleared: {exc}")
+        return SagaSources()
+
+
 def _write_full_from_args(
     args: argparse.Namespace,
     communal: Decimal,
@@ -1006,6 +1026,12 @@ def _write_full_from_args(
         except (ValueError, OSError) as exc:
             print(f"funding labels skipped: {exc}")
     trail = _trail_for(args, db)
+    saga_sources = _saga_sources_from_args(args)
+    if portfolio is not None:
+        for utxo in portfolio.utxos:
+            document = build_saga_document(db, utxo.txid, utxo.vout, history, saga_sources)
+            utxo.coverage_share = document.coverage
+            utxo.coverage_tier = document.weakest_tier
     return write_full_report(
         db=db,
         csv_path=args.input,
@@ -1024,6 +1050,7 @@ def _write_full_from_args(
         site_root=getattr(args, "site_root", None),
         tax_years=tax_years,
         trail=trail,
+        saga_sources=saga_sources,
     )
 
 
@@ -1288,6 +1315,7 @@ def _run_portfolio(args: argparse.Namespace) -> int:
     for line in funding.unmatched:
         print(f"unmatched withdrawal: {line} — no chain receive in window")
     trail = _trail_for(args, db)
+    saga_sources = _saga_sources_from_args(args)
     portfolio, advisories = portfolio_from_db(
         db, entities, fiat, args.wallet, curve, price, as_of, utxo_tags
     )
@@ -1296,6 +1324,18 @@ def _run_portfolio(args: argparse.Namespace) -> int:
         print(f"entity {eid} ({label}): {value:,.2f} EUR ({share:.1f}%)")
     print(f"net_worth_eur: {portfolio.net_worth_eur:,.2f}")
     if args.out:
+        # Build every saga once: the same document drives the entity-page
+        # coverage badge and the provenance page (no second DAG walk).
+        documents: dict[tuple[str, int], SagaDocument] = {}
+        for utxo in portfolio.utxos:
+            document = build_saga_document(db, utxo.txid, utxo.vout, curve, saga_sources)
+            documents[(utxo.txid, utxo.vout)] = document
+            utxo.coverage_share = document.coverage
+            utxo.coverage_tier = document.weakest_tier
+        print(
+            f"coverage: {portfolio.coverage_share:.0%} of BTC value bank-proven "
+            f"({portfolio.coverage_value_eur:,.2f} EUR)"
+        )
         history = load_price_series(bundled_history_path())
         sparkline = svg_sparkline(history, label="BTC/EUR daily close, last 12 months")
         overview_target = write_overview_page(
@@ -1331,6 +1371,8 @@ def _run_portfolio(args: argparse.Namespace) -> int:
                 funding=funding.matches,
                 site_root=getattr(args, "site_root", None),
                 trail=trail,
+                saga_sources=saga_sources,
+                saga_document=documents[(utxo.txid, utxo.vout)],
             )
             print(f"wrote {target}")
     return 0
@@ -1385,7 +1427,7 @@ def _run_fiat_check(args: argparse.Namespace) -> int:
 
 
 def _run_provenance(args: argparse.Namespace) -> int:
-    from utxoproof.provenance import build_provenance_chain
+    from utxoproof.provenance import build_saga
     from utxoproof.reports import write_provenance_page
 
     try:
@@ -1419,12 +1461,12 @@ def _run_provenance(args: argparse.Namespace) -> int:
         else:
             curve = _bundled_curve(db)
             price, note = _bundled_price_at(db, as_of)
-    steps = build_provenance_chain(txid, vout, db, curve, args.depth)
+    nodes, truncated = build_saga(txid, vout, db, curve, args.depth, args.max_nodes)
+    sources = [node for node in nodes if node.is_source]
     print(
-        f"chain: {len(steps)} steps back to {steps[0].txid}:{steps[0].vout}" if steps else "empty"
+        f"saga: {len(nodes)} nodes, {len(sources)} source(s), "
+        f"{truncated:.2%} of target value truncated"
     )
-    if steps and len(steps) >= args.depth:
-        print(f"note: chain truncated at depth cap {args.depth} — earliest history not shown")
     print(f"price_note: {note}")
     if args.out:
         from utxoproof.linking import FundingResult, funding_from_ledgers
@@ -1435,6 +1477,7 @@ def _run_provenance(args: argparse.Namespace) -> int:
         except (ValueError, OSError) as exc:
             print(f"funding labels skipped: {exc}")
         trail = _trail_for(args, db)
+        saga_sources = _saga_sources_from_args(args)
         target = write_provenance_page(
             db,
             txid,
@@ -1448,6 +1491,8 @@ def _run_provenance(args: argparse.Namespace) -> int:
             funding=funding.matches,
             site_root=getattr(args, "site_root", None),
             trail=trail,
+            saga_sources=saga_sources,
+            max_nodes=args.max_nodes,
         )
         print(f"wrote {target}")
     return 0

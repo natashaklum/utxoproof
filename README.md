@@ -27,10 +27,11 @@ Implemented and covered by tests + live regtest runs: exchange imports
 (Kraken ledgers + trades join incl. margin/rollover, Coinbase, Binance, Bisq)
 and Belgian bank parsing, EUR price oracle,
 Belgian classifier with `utxoproof.toml`, HTML reports (tax, status, privacy,
-advisory, provenance, all-time) with evidence ZIPs, KYC propagation, on-chain
-descriptor sync against Bitcoin Core, and demo reports published to GitHub
-Pages on every `main` push. See the sprint roadmap in `utxoproof-plan_v5.md`
-for what remains.
+advisory, provenance/saga, all-time) with evidence ZIPs, KYC propagation,
+all-parent provenance with persisted bank↔exchange↔chain links and
+value-weighted coverage, on-chain descriptor sync against Bitcoin Core, and
+demo reports published to GitHub Pages on every `main` push. See the sprint
+roadmap in `utxoproof-plan_v7.md` for what remains.
 
 ## Installation
 
@@ -113,7 +114,7 @@ utxoproof/
   classifier.py + config.py  # Sec. 6 scores, utxoproof.toml
   descriptors.py  # BIP32/84 templates + address derivation (embit)
   bitcoin_rpc.py + onchain.py  # Core JSON-RPC, tx-graph sync
-  kyc.py + advisory.py + provenance.py + evidence.py + reports.py
+  kyc.py + advisory.py + provenance.py + saga.py + evidence.py + reports.py
 tests/
   fixtures/  # synthetic only, hand-verified, never real data
 ```
@@ -122,7 +123,7 @@ tests/
 
 Tax computation reuses [rp2](https://github.com/eprbell/rp2) via our fork
 [`natashaklum/rp2`](https://github.com/natashaklum/rp2), which adds the Belgian
-`BE` country plugin (`rp2_be`). The plan's full spec is `utxoproof-plan_v5.md`.
+`BE` country plugin (`rp2_be`). The plan's full spec is `utxoproof-plan_v7.md`.
 
 ## License
 

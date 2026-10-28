@@ -237,9 +237,63 @@ def main() -> int:
     demo_db.commit()
     seed_source_kyc(demo_db)
     propagate_graph(demo_db)
+
+    # Synthetic cross-domain links so the demo provenance page exercises the
+    # bank -> exchange -> chain saga. These are demo-only values, not fixtures.
+    from utxoproof.banks import BankRow
+    from utxoproof.exchange import ExchangeTx, FiatFlow
+    from utxoproof.saga import SagaSources
+
+    demo_saga_sources = SagaSources(
+        transactions=[
+            ExchangeTx(
+                datetime.date(2023, 1, 2),
+                "BUY",
+                _Decimal("1"),
+                _Decimal("20000"),
+                _Decimal("0"),
+                "DEMO-T1",
+                exchange="kraken",
+                source_evidence="demo-kraken-ledgers.csv:refid:DEMO-T1",
+            ),
+            ExchangeTx(
+                datetime.date(2023, 1, 3),
+                "WITHDRAWAL",
+                _Decimal("1"),
+                _Decimal("0"),
+                _Decimal("0"),
+                "DEMO-W1",
+                exchange="kraken",
+                source_evidence="demo-kraken-ledgers.csv:refid:DEMO-W1",
+            ),
+        ],
+        fiat_flows=[
+            FiatFlow(
+                datetime.date(2022, 12, 30),
+                "DEPOSIT",
+                _Decimal("20000"),
+                "DEMO-D1",
+                source_evidence="demo-kraken-ledgers.csv:refid:DEMO-D1",
+            )
+        ],
+        bank_rows=[
+            BankRow(
+                datetime.date(2022, 12, 30),
+                "Kraken deposit",
+                _Decimal("-20000"),
+                None,
+                "DEMO-D1",
+                source_file="demo-kraken-bank.csv",
+                row_number=2,
+            )
+        ],
+        ledgers_file="demo-kraken-ledgers.csv",
+        bank_files=("demo-kraken-bank.csv",),
+    )
     curve = {
         datetime.date(2021, 6, 1): _Decimal("5000"),
         datetime.date(2023, 1, 1): _Decimal("20000"),
+        datetime.date(2023, 1, 2): _Decimal("21000"),
         datetime.date(2023, 2, 1): _Decimal("25000"),
         datetime.date(2023, 3, 1): _Decimal("30000"),
     }
@@ -302,6 +356,7 @@ def main() -> int:
         evidence_root=out / "demo-evidence",
         evidence_url_prefix="../demo-evidence",
         nav=dnav("provenance/provenance_D_0.html"),
+        saga_sources=demo_saga_sources,
     )
     links.append('<li><a href="provenance/provenance_D_0.html">Provenance D:0</a></li>')
 
@@ -335,6 +390,7 @@ def main() -> int:
             evidence_root=out / "demo-evidence",
             evidence_url_prefix="../demo-evidence",
             nav=dnav(f"provenance/provenance_{txid}_{vout}.html"),
+            saga_sources=demo_saga_sources,
         )
     unspent = demo_db.execute(
         "SELECT txid, vout, value_sat, kyc_status FROM tx_outputs WHERE spent_by_txid IS NULL"
@@ -378,6 +434,14 @@ def main() -> int:
         ],
         current_price_eur=Decimal("40000"),
     )
+    from utxoproof.saga import build_saga_document
+
+    for holding in portfolio.utxos:
+        document = build_saga_document(
+            demo_db, holding.txid, holding.vout, lambda day: curve[day], demo_saga_sources
+        )
+        holding.coverage_share = document.coverage
+        holding.coverage_tier = document.weakest_tier
     from utxoproof.portfolio import load_price_series, svg_sparkline
 
     history = load_price_series(ROOT / "utxoproof" / "data" / "btc_eur_daily.csv")
@@ -424,6 +488,7 @@ def main() -> int:
         evidence_root=out / "demo-evidence",
         evidence_url_prefix="../demo-evidence",
         nav=dnav("full/fullreport.html"),
+        saga_sources=demo_saga_sources,
     )
     links.insert(
         0, '<li><a href="full/fullreport.html"><strong>Full report (everything)</strong></a></li>'

@@ -54,6 +54,14 @@ def _portfolio() -> Portfolio:
     )
 
 
+def test_portfolio_coverage_is_value_weighted() -> None:
+    portfolio = _portfolio()
+    portfolio.utxos[0].coverage_share = Decimal("0.5")
+    portfolio.utxos[1].coverage_share = Decimal("1")
+    assert portfolio.coverage_value_eur == Decimal("60000")
+    assert portfolio.coverage_share == Decimal("0.6")
+
+
 def test_totals_and_allocation() -> None:
     portfolio = _portfolio()
     assert portfolio.btc_total == Decimal("2.5")
@@ -263,6 +271,18 @@ def test_address_column_flows_to_entity_pages(tmp_path: Path) -> None:
     assert "<th>Address</th>" in html
     assert addr in html
     assert "—" in html  # outputs without a recorded address fall back gracefully
+
+
+def test_overview_renders_value_weighted_coverage(tmp_path: Path) -> None:
+    from utxoproof.reports import write_overview_page
+
+    portfolio = _portfolio()
+    portfolio.utxos[0].coverage_share = Decimal("0.5")
+    portfolio.utxos[1].coverage_share = Decimal("1")
+    target = write_overview_page(portfolio, "2024-06-01", "test price", tmp_path, "")
+    html = target.read_text(encoding="utf-8")
+    assert "bank-proven BTC value" in html
+    assert "60%" in html
 
 
 def test_overview_hub_lists_related_reports(tmp_path: Path) -> None:

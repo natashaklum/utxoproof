@@ -45,6 +45,8 @@ class UtxoHolding:
     tags: tuple[str, ...] = ()
     behavior: str = ""  # exclusive tax-behavior bucket (see utxoproof.tags)
     channel: str = ""  # exclusive funding-channel bucket (see utxoproof.tags)
+    coverage_share: Decimal = Decimal("0")  # bank-proven fraction, candidates excluded
+    coverage_tier: str = ""  # weakest tier on the best bank path
 
 
 @dataclass
@@ -95,6 +97,18 @@ class Portfolio:
     @property
     def unrealized_eur(self) -> Decimal:
         return self.btc_value_eur - self.cost_basis_eur
+
+    @property
+    def coverage_value_eur(self) -> Decimal:
+        return sum((u.eur_value * u.coverage_share for u in self.utxos), Decimal("0"))
+
+    @property
+    def coverage_share(self) -> Decimal:
+        """Value-weighted bank-proven fraction of the BTC portfolio."""
+        total = self.btc_value_eur
+        if total == 0:
+            return Decimal("0")
+        return self.coverage_value_eur / total
 
     def entity_value_eur(self, entity_id: str) -> Decimal:
         utxo_value = sum(

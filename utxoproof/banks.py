@@ -24,6 +24,7 @@ class BankRow:
     counterparty_iban: str | None
     reference: str | None
     source_file: str = ""
+    row_number: int = 0  # 1-based CSV line, stable evidence ref after re-sorts
 
 
 @dataclass
@@ -292,6 +293,7 @@ def parse_bank_csv(path: str | Path, bank: str, encoding: str | None = None) -> 
                     counterparty_iban=_pick(row, profile.iban_cols) or None,
                     reference=_pick(row, profile.reference_cols) or None,
                     source_file=str(path),
+                    row_number=reader.line_num,
                 )
             )
     rows.sort(key=lambda r: r.date.isoformat())

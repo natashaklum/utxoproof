@@ -9,7 +9,7 @@
 ## What this is
 
 utxoproof: Bitcoin wealth management + Belgian tax compliance for self-custodians.
-Full spec: `utxoproof-plan_v5.md`. Two repos:
+Full spec: `utxoproof-plan_v7.md` (§14 is the saga contract). Two repos:
 
 - This repo (`utxoproof`): the tool. Python 3.11+, `utxoproof/` package.
 - [`natashaklum/rp2`](https://github.com/natashaklum/rp2) fork: rp2 + Belgian `BE`
@@ -62,13 +62,23 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   cost basis is acquisition-date close (rp2 lot integration pending).
   `utxoproof advise --db --price --as-of [--out]`; speculation taint defaults
   off until the Sprint 7 classifier feeds it.
-- Provenance lives in `utxoproof/provenance.py`: `build_provenance_chain` is
-  the shipped largest-parent view; `build_saga` is the all-parent DAG with
-  proportional shares and truncated-share accounting (Sprint 12, not yet
-  rendered). `utxoproof provenance txid:vout --db
-  [--price/--as-of/--depth/--out]`. Unrealized gain is omitted from the header
-  (needs lot matching); first-traced value shown instead. Cross-domain saga
-  edges persist in `provenance_links` (schema only so far).
+- Provenance lives in `utxoproof/provenance.py`: `build_saga` is the shipped
+  all-parent DAG with proportional shares, fee/truncation accounting, and
+  source detection; `build_provenance_chain` remains the legacy largest-parent
+  walk used by funding-label tests. `utxoproof provenance txid:vout --db
+  [--price/--as-of/--depth/--max-nodes/--out]` renders the saga. Unrealized
+  gain is omitted from the header (needs lot matching); first-traced value
+  shown instead.
+- Cross-domain saga lives in `utxoproof/saga.py`: `ProvenanceLink`,
+  `build_saga_document`, deterministic bank/EUR-deposit/trade/withdrawal/chain
+  matchers, and value-weighted `saga_coverage`. Links persist in
+  `provenance_links`; derived rebuilds are idempotent and never overwrite
+  `origin='user'` confirmations/rejections. Tiers are exact / approximate /
+  allocated / candidate; candidates never raise coverage. `--ledgers` +
+  `--bank-csv`/`--bank-list` on `portfolio`/`provenance`/`report --full`
+  rebuild links; parse failure clears derived links (user rows stay).
+  `parse_kraken_fiat_flows` supplies EUR deposits/withdrawals (the BTC parser
+  intentionally drops them).
 - Evidence lives in `utxoproof/evidence.py` (SHA-256 manifest, content dedupe,
   ZIP bundle). `utxoproof report --year Y [--source F]...` builds it unless
   `--no-zip`; `report --alltime` writes the per-year summary (no ZIP).
@@ -79,8 +89,9 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   `~/.utxoproof`); `--db`/`--evidence-dir` override per call.
 - Runnable workflows live in `examples/` (single self-contained `run.sh`,
   `MODE=prepare` stops on shortfalls unless `ALLOW_SHORTFALLS=1`,
-  `MODE=refresh` idempotent, `TAX_YEAR` empty covers every data year, incl.
-  `setup`/`sync`/`portfolio` on-chain stages); covered by
+  `MODE=refresh` idempotent, `MODE=clean` lists generated artifacts and
+  deletes only with `CONFIRM=1`, `TAX_YEAR` empty covers every data year,
+  incl. `setup`/`sync`/`portfolio` on-chain stages); covered by
   `tests/test_run_scripts.py` driving it against fixtures.
 - Entities for the overview come from a TOML file (`examples/entities.example.toml`;
   `load_entities` + `portfolio_from_db` in `utxoproof/portfolio.py`, surfaced via
@@ -91,13 +102,11 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   carries optional `as_of`/`statements`, audited by `utxoproof fiat-check`
   (freshness + evidence, warn-only `run.sh` stage); `WALLETS="name:fp:xpub|…"`
   loops setup/sync/reconcile, legacy XPUB vars synthesize one entry.
-- Exchange funding links live in `utxoproof/linking.py` (exact sats + date
-  window first, fee-skim tolerance second with ~Δ labels; ambiguous/unmatched
-  at either tier reported, never guessed) and
-  surface as provenance-step evidence (`--ledgers` on `portfolio`/`provenance`/
-  `report`); `funding_trail()` extends funded receipts with candidate buys +
-  bank matches (`--bank-csv`/`--bank-type`) rendered as a prologue, never fact.
-  Depth-cap truncation is rendered as a note, not silent.
+- `utxoproof/linking.py` keeps the legacy withdrawal→chain matcher and
+  `funding_trail()` (exact sats + date window first, fee-skew second with ~Δ
+  labels; ambiguous/unmatched reported, never guessed). The saga supersedes it
+  as the primary provenance evidence; the funding trail remains the candidate
+  fiat prologue. Depth/node truncation is rendered as a note, never silent.
 - Dashboard lives in `utxoproof/portfolio.py` (entities, rollups, inline SVG
   charts — no JavaScript). Overview -> entity pages -> provenance pages;
   chart HTML is trusted generator output (`| safe` in templates, everything
@@ -124,8 +133,10 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   communal rate + classifier flags. Progressive speculator rates are NOT
   computed (needs annual bracket table); the report says so.
 - Exchanges: `kraken_csv` / `coinbase_csv` / `binance_csv` / `bisq_csv` yield
-  `exchange.ExchangeTx` (Bisq defaults non_kyc). Banks: `banks.py` profile
-  engine (headers UNVERIFIED, alias-driven); `matching.py` fiat-leg matcher
+  `exchange.ExchangeTx` (Bisq defaults non_kyc); `parse_kraken_fiat_flows`
+  separately yields `FiatFlow` EUR deposits/withdrawals for the saga. Banks:
+  `banks.py` profile engine (headers UNVERIFIED, alias-driven; `BankRow` keeps
+  the CSV line number for stable evidence refs); `matching.py` fiat-leg matcher
   (two passes: exact euro equality, then fee/FX tolerance labeled approximate;
   review-only). Bank ids are explicit
   (`kbc-bankaccount`, `kbc-creditcard`; `kbc` kept as alias): card exports get
@@ -145,7 +156,7 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   independently before pinning them in tests.
 - `S101` (asserts) is ignored for `tests/**` in `pyproject.toml`; everything else
   must satisfy `ruff check`, `ruff format`, and strict `mypy`.
-- Sprint deliverables follow `utxoproof-plan_v5.md` Sec. 20; flag spec-vs-reality
+- Sprint deliverables follow `utxoproof-plan_v7.md` Sec. 20; flag spec-vs-reality
   gaps (e.g. rp2's `AbstractCountry` has no `apply_tax` hook) instead of forcing
   the spec's shape.
 

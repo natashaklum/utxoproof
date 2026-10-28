@@ -316,3 +316,49 @@ def test_run_rejects_malformed_wallet_entry(tmp_path: Path) -> None:
     )
     assert proc.returncode != 0
     assert "bad WALLETS entry" in proc.stdout + proc.stderr
+
+
+def test_clean_is_a_dry_run_by_default(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    (data / "portfolio" / "overview").mkdir(parents=True)
+    (data / "portfolio" / "overview" / "overview.html").write_text("page", encoding="utf-8")
+    (data / "2023").mkdir()
+    (data / "2023" / "report.html").write_text("page", encoding="utf-8")
+    (data / "manual.csv").write_text("date,kind\n", encoding="utf-8")
+    source = tmp_path / "ledgers.csv"
+    source.write_text("source", encoding="utf-8")
+
+    proc = _run("run.sh", {"DATA_DIR": str(data), "MODE": "clean"})
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    assert "would remove:" in proc.stdout
+    assert "CONFIRM=1" in proc.stdout
+    assert (data / "manual.csv").is_file()
+    assert (data / "portfolio" / "overview" / "overview.html").is_file()
+    assert (data / "2023" / "report.html").is_file()
+    assert source.is_file()
+
+
+def test_clean_confirm_removes_generated_artifacts_but_not_sources(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    (data / "portfolio").mkdir(parents=True)
+    (data / "portfolio" / "overview.html").write_text("page", encoding="utf-8")
+    (data / "2023").mkdir()
+    (data / "2023" / "report.html").write_text("page", encoding="utf-8")
+    (data / "manual.csv").write_text("date,kind\n", encoding="utf-8")
+    (data / "bank-rows.csv").write_text("date,kind\n", encoding="utf-8")
+    (data / "bank-rows-1.csv").write_text("date,kind\n", encoding="utf-8")
+    (data / "utxoproof.db").write_bytes(b"db")
+    source = tmp_path / "ledgers.csv"
+    source.write_text("source", encoding="utf-8")
+
+    proc = _run("run.sh", {"DATA_DIR": str(data), "MODE": "clean", "CONFIRM": "1"})
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    assert "removed:" in proc.stdout
+    assert not (data / "manual.csv").exists()
+    assert not (data / "bank-rows.csv").exists()
+    assert not (data / "bank-rows-1.csv").exists()
+    assert not (data / "portfolio").exists()
+    assert not (data / "2023").exists()
+    assert not (data / "utxoproof.db").exists()
+    assert data.is_dir()
+    assert source.is_file()

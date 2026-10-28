@@ -13,6 +13,24 @@ from decimal import Decimal
 
 
 @dataclass
+class FiatFlow:
+    """A fiat deposit or withdrawal on an exchange (saga bank layer).
+
+    ``eur`` is always positive; ``kind`` carries the direction. These rows are
+    deliberately separate from ``ExchangeTx`` because the ledger parser drops
+    non-BTC groups: a bank debit can only be joined to a deposit if the euro
+    leg survives parsing.
+    """
+
+    date: datetime.date
+    kind: str  # DEPOSIT | WITHDRAWAL
+    eur: Decimal
+    refid: str
+    exchange: str = "kraken"
+    source_evidence: str = ""
+
+
+@dataclass
 class ExchangeTx:
     date: datetime.date
     kind: str  # BUY | SELL | MARGIN | ROLLOVER | ADJUSTMENT | WITHDRAWAL | DEPOSIT

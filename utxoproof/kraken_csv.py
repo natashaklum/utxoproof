@@ -22,7 +22,7 @@ from collections.abc import Callable
 from decimal import Decimal
 from pathlib import Path
 
-from utxoproof.exchange import ExchangeTx, to_manual_csv_rows
+from utxoproof.exchange import ExchangeTx, FiatFlow, to_manual_csv_rows
 
 KYC_STATUS = "kyc"
 SOURCE_TYPE = "exchange_purchase"
@@ -111,6 +111,55 @@ def parse_kraken_ledgers(
             result.append(tx)
     result.sort(key=lambda tx: (tx.date.isoformat(), tx.refid))
     return result
+
+
+def parse_kraken_fiat_flows(path: str | Path) -> list[FiatFlow]:
+    """Parse external EUR deposits/withdrawals from a Kraken ``ledgers.csv``.
+
+    The BTC parser intentionally drops non-BTC refid groups, which also drops
+    the euro funding leg. The saga bank layer needs those rows to join a bank
+    debit to the exchange deposit that funded a trade. Only ``deposit`` and
+    ``withdrawal`` groups are returned; internal transfers and trades are not
+    fiat funding.
+    """
+    path = Path(path)
+    groups: dict[str, list[dict[str, str]]] = {}
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            refid = (row.get("refid") or "").strip()
+            if refid:
+                groups.setdefault(refid, []).append(row)
+
+    flows: list[FiatFlow] = []
+    for refid, rows in groups.items():
+        entry_type = (rows[0].get("type") or "").strip().lower()
+        if entry_type not in ("deposit", "withdrawal"):
+            continue
+        eur_rows = [
+            row for row in rows if FIAT_ASSETS.get((row.get("asset") or "").strip()) == "EUR"
+        ]
+        if not eur_rows:
+            continue
+        amount = sum((Decimal(row.get("amount") or "0") for row in eur_rows), Decimal("0"))
+        if amount == 0:
+            continue
+        # A deposit is positive and a withdrawal negative in Kraken's export;
+        # a sign that disagrees with the type is corruption, not a transfer.
+        if (entry_type == "deposit" and amount < 0) or (entry_type == "withdrawal" and amount > 0):
+            raise ValueError(
+                f"Kraken refid {refid}: {entry_type} EUR amount has unexpected sign {amount}"
+            )
+        flows.append(
+            FiatFlow(
+                date=_parse_time(rows[0].get("time", "")),
+                kind=entry_type.upper(),
+                eur=abs(amount),
+                refid=refid,
+                source_evidence=f"{path.name}:refid:{refid}",
+            )
+        )
+    flows.sort(key=lambda flow: (flow.date.isoformat(), flow.refid))
+    return flows
 
 
 def _parse_group(
@@ -557,8 +606,10 @@ def _parse_trade(
 
 __all__ = [
     "ExchangeTx",
+    "FiatFlow",
     "KrakenTx",
     "detect_margin_activity",
+    "parse_kraken_fiat_flows",
     "parse_kraken_ledgers",
     "parse_kraken_trades",
     "to_manual_csv_rows",

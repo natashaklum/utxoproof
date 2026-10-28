@@ -53,7 +53,7 @@ class ProvenanceStep:
 def db_get_output(db: sqlite3.Connection, txid: str, vout: int) -> dict[str, Any] | None:
     row = db.execute(
         "SELECT txid, vout, address, value_sat, kyc_status, kyc_fraction, "
-        "source_type, source_label, source_evidence, block_height, block_time "
+        "source_type, source_label, source_evidence, block_height, block_time, is_mine "
         "FROM tx_outputs JOIN transactions USING (txid) "
         "WHERE tx_outputs.txid=? AND vout=?",
         (txid, vout),
@@ -72,6 +72,7 @@ def db_get_output(db: sqlite3.Connection, txid: str, vout: int) -> dict[str, Any
         "source_evidence",
         "block_height",
         "block_time",
+        "is_mine",
     )
     return dict(zip(keys, row, strict=True))
 
@@ -144,6 +145,8 @@ class SagaNode:
     source_label: str = ""
     mixing_event: bool = False
     is_source: bool = False
+    is_mine: bool = True
+    is_coinbase: bool = False
     parent_utxos: tuple[tuple[str, int], ...] = ()
     sibling_utxos: tuple[tuple[str, int], ...] = ()
     fee_sat: int = 0
@@ -309,6 +312,7 @@ def build_saga(
                 evidence = _append_evidence(evidence, f"missing parent {missing}")
 
             is_source = not inputs
+            is_coinbase = is_source and _tx_is_coinbase(db, key[0])
             nodes[key] = SagaNode(
                 txid=str(output["txid"]),
                 vout=int(output["vout"]),
@@ -323,7 +327,7 @@ def build_saga(
                     output["source_label"],
                     len(inputs),
                     len(all_outputs),
-                    _tx_is_coinbase(db, key[0]) if is_source else False,
+                    is_coinbase,
                 ),
                 evidence=evidence,
                 amount_btc=amount_btc,
@@ -334,6 +338,8 @@ def build_saga(
                 source_label=str(output["source_label"] or ""),
                 mixing_event=len(parent_statuses) > 1,
                 is_source=is_source,
+                is_mine=bool(output["is_mine"]),
+                is_coinbase=is_coinbase,
                 parent_utxos=parent_utxos,
                 sibling_utxos=sibling_utxos,
                 fee_sat=fees[key[0]],

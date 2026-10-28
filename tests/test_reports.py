@@ -130,6 +130,7 @@ def test_full_report_composes_all_sections_once(tmp_path: Path) -> None:
     db = create_sample_graph()
     curve = {
         datetime.date(2023, 1, 1): _Decimal("20000"),
+        datetime.date(2023, 1, 2): _Decimal("21000"),
         datetime.date(2023, 2, 1): _Decimal("25000"),
         datetime.date(2023, 3, 1): _Decimal("30000"),
     }

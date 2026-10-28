@@ -106,7 +106,7 @@ utxoproof --data-dir /tmp/throwaway status --input manual.csv --price 40000
 For a first real-data trial, point the variable at an empty folder: the worst
 case is one folder to delete.
 
-## 2c. Complete runs: `run.sh` (`MODE=prepare` / `MODE=refresh`)
+## 2c. Complete runs: `run.sh` (`prepare` / `refresh` / `clean`)
 
 `examples/run.sh` is one self-contained script with the settings on top — copy
 it next to your data dir and edit the paths, or override any variable from the
@@ -120,7 +120,14 @@ $EDITOR ~/utxoproof-data/run.sh   # set KRAKEN_LEDGERS etc.
 bash ~/utxoproof-data/run.sh      # prepare: import -> check -> compute -> report
 TAX_YEAR=2023 bash ~/utxoproof-data/run.sh   # one filing year only
 MODE=refresh bash ~/utxoproof-data/run.sh   # repeatable: refresh + alltime
+MODE=clean bash ~/utxoproof-data/run.sh     # dry run; CONFIRM=1 deletes
 ```
+
+`MODE=clean` is a dry run by default: it lists exactly what a run generated
+(`manual.csv`, `bank-list.txt`, `bank-rows*.csv`, the DB, year bundles,
+`current-status/`, `alltime/`, `portfolio/`, `bank/`) and deletes nothing.
+Re-run with `CONFIRM=1` to remove those artifacts. User sources, attachments
+and `utxoproof.toml` are never touched.
 
 `TAX_YEAR` empty (the default) covers every year present in `manual.csv` —
 one `compute` row and one `<year>/report.html` + evidence ZIP each, plus the
@@ -144,8 +151,9 @@ want numbers-with-caveats anyway, `ALLOW_SHORTFALLS=1` proceeds with a loud
 warning (figures are upper bounds, never filing-ready). `MODE=refresh` is
 idempotent (full rewrite, no merge logic) and safe to re-run or cron once you
 trust the data.
-Both print `==>` stage lines, both honor `UTXOPROOF_DATA_DIR`, and both are
-covered by end-to-end tests running them against fixtures.
+All three print `==>` stage lines and honor `UTXOPROOF_DATA_DIR`; prepare and
+refresh are covered by end-to-end tests running them against fixtures, and
+clean is tested for dry-run and `CONFIRM=1` behavior.
 
 ## 2d. On-chain wallets and the entity overview
 
@@ -240,25 +248,33 @@ old `speculation_tainted` / `privacy_risk` flags now live only as tags.
 
 That writes `overview/overview.html`, `entities/<id>.html`, and
 `provenance/provenance_<txid>_<vout>.html` per unspent UTXO, so entity-page
-UTXO links resolve. Pass `--ledgers ledgers.csv` (also wired in `run.sh` via
-`KRAKEN_LEDGERS`) to label each chain receipt with the Kraken withdrawal that
-funded it — amount + date matched, ambiguous or unmatched withdrawals reported
-and left unlabeled, never guessed. Ledgers with margin legs need the same
-`--trades trades.csv` join as `import` for funding labels; without it the
-labels are skipped with a warning while the overview still builds.
-`report --full --entities entities.toml` folds the overview into the full
-report the same way. Provenance pages state when the chain hit the depth cap
-instead of silently truncating.
+UTXO links resolve. Every page walks the **full all-parent saga**: consolidation
+parents each carry their proportional share (an 80/20 funding split is visible,
+not hidden behind the largest parent), fan-out siblings are listed, and hitting
+the `--depth`/`--max-nodes` caps shows the truncated share instead of a
+complete-looking trail. The portfolio cards and entity table show each UTXO's
+**bank-proven coverage**; candidates never raise it.
 
-Above every provenance chain sits an optional **fiat funding prologue**: for
-each Kraken-funded receipt, the exact-BTC buys predating the withdrawal
-(nearest first, top 5 + overflow note), each with its bank fiat match and
-reasons — or an explicit "no bank row matched". Add `--bank-csv stmt.csv`
-(`--bank-type`, wired in `run.sh` via `BANK_CSV`/`BANK_TYPE`) to `portfolio`,
-`provenance` or `report`. This is candidate evidence with both proofs cited
-(`ledgers.csv` refid + bank file/row), never an asserted fact: partial
-withdrawals, fee skims and unmatched statements simply yield no candidates.
-Without `--bank-csv` the section is omitted entirely (not an empty table).
+Pass `--ledgers ledgers.csv` (also wired in `run.sh` via `KRAKEN_LEDGERS`) plus
+bank statements (`--bank-csv`/`--bank-type`, or `--bank-list`) to the same
+commands and the saga joins the layers in evidence order: bank debit →
+exchange EUR deposit → trade (FIFO EUR balance replay) → BTC withdrawal (FIFO
+BTC replay, or nearest-buy candidates when the ledger starts mid-history) →
+chain receipt (exact sats/date, then fee-skew tolerance). Each edge cites both
+sides (`bank.csv:row` + ledger refid, `txid:vout`); ambiguous or unmatched legs
+remain unresolved, never guessed. Tiers are `exact`, `approximate`,
+`allocated`, and `candidate` (candidate-only panel). A rejected user edge is
+remembered in the DB and survives rebuilds; deleting a supplied source clears
+its derived links on the next run. Ledgers with margin legs need the same
+`--trades trades.csv` join as `import`.
+
+`report --full --entities entities.toml` folds the saga and coverage into the
+full report the same way. The old fiat funding prologue still appears above
+the saga as a candidate cross-check (nearest exact-BTC buys + bank match);
+without `--bank-csv` that prologue is omitted, while the saga still shows
+exchange-only links when `--ledgers` alone is supplied. Without either source,
+persisted links from the last rebuild are shown, and the page says how to
+rebuild them.
 
 Zero on-chain balance with the wallet present almost always means descriptors
 were imported with timestamp `now` (no historical rescan): check
@@ -405,12 +421,16 @@ Now the analytical commands read the local DB:
 .venv/bin/utxoproof advise --db ~/.utxoproof/utxoproof.db --price 40000 \
   --as-of 2024-06-01 --out /tmp/utxo/advisory
 .venv/bin/utxoproof provenance <txid>:<vout> --db ~/.utxoproof/utxoproof.db \
-  --price 40000 --out /tmp/utxo/provenance
+  --price 40000 --ledgers ~/exports/kraken_ledgers.csv \
+  --bank-csv ~/exports/kbc.csv --bank-type kbc-bankaccount \
+  --out /tmp/utxo/provenance
 ```
 
 `status` values holdings at `--price` (or the bundled history close without it).
 `advise` ranks UTXOs by tax-if-sold with sell/hold/borrow/estate/privacy flags.
-`provenance` walks a UTXO back to its origin with per-step EUR values.
+`provenance` walks a UTXO back through all on-chain parents and, when ledgers +
+bank statements are supplied, through the exchange and bank layers with a
+value-weighted coverage badge.
 
 ## 5b. Flow C — bank statements (fiat-leg corroboration)
 

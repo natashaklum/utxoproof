@@ -18,6 +18,13 @@
   .summary td { font-weight: bold; }
   pre.rationale { background: #f6f6f6; padding: 1em; white-space: pre-wrap; }
   tr.mixing td, tr.mixing-origin td { background: #fff3cd; }
+  .tier { display: inline-block; border-radius: 999px; padding: 0.1em 0.55em; font-size: 0.82em; font-weight: bold; }
+  .tier-exact { background: #d7f5df; color: #145c2e; }
+  .tier-approximate { background: #fff0c2; color: #6b4b00; }
+  .tier-allocated { background: #dbe8ff; color: #234b8a; }
+  .tier-candidate { background: #f1e4ff; color: #5b2a86; }
+  .tier-rejected { background: #ffd9d9; color: #7a1f1f; }
+  .tier-unresolved { background: #eceff3; color: #555; }
   .charts { display: flex; gap: 2em; flex-wrap: wrap; align-items: flex-start; }
   .donut { border-radius: 50%; position: relative; }
   .donut-hole { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border-radius: 50%; background: #fafbfc; display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -55,6 +62,12 @@
     nav.site-nav { background: #1d2127; }
     .donut-hole { background: #14171c; }
     tr.mixing td, tr.mixing-origin td { background: #4a3f1d; }
+    .tier-exact { background: #1d4d2d; color: #b9f3c8; }
+    .tier-approximate { background: #554514; color: #ffe59a; }
+    .tier-allocated { background: #233b5f; color: #c4d9ff; }
+    .tier-candidate { background: #3d2452; color: #e4c7ff; }
+    .tier-rejected { background: #572424; color: #ffc4c4; }
+    .tier-unresolved { background: #2a3038; color: #b7bec8; }
   }
 </style>
 </head>

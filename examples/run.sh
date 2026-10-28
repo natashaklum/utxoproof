@@ -5,9 +5,10 @@
 # Pages render leaf-up so menus and hub links resolve: tax/status/alltime first,
 # then portfolio (links them), then bank last (links everything incl. provenance).
 #
-# Two modes:
+# Three modes:
 #   MODE=prepare   (default)   — stops if check reports shortfalls
 #   MODE=refresh   — idempotent rerun; shortfalls print but do not stop
+#   MODE=clean     — dry-run list of generated artifacts; CONFIRM=1 deletes
 #
 # All settings are environment variables with sane defaults; copy this file
 # next to your data dir and edit the variables, or override any from the
@@ -19,6 +20,7 @@
 #   bash ~/utxoproof-data/run.sh          # prepare mode, every year in the file
 #   TAX_YEAR=2023 bash ~/utxoproof-data/run.sh   # one filing year only
 #   MODE=refresh bash ~/utxoproof-data/run.sh    # idempotent rerun
+#   MODE=clean bash ~/utxoproof-data/run.sh      # dry run, then CONFIRM=1
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
@@ -43,7 +45,8 @@ set -euo pipefail
 : "${COIN:=0}"                    # BIP44 coin
 : "${ACCOUNT:=0}"                 # BIP44 account
 : "${ENTITIES_FILE:=}"            # path to entities TOML; empty skips portfolio
-: "${MODE:=prepare}"             # prepare | refresh
+: "${MODE:=prepare}"             # prepare | refresh | clean
+: "${CONFIRM:=}"                  # MODE=clean only: 1 deletes; empty is a dry run
 : "${ALLOW_SHORTFALLS:=}"         # non-empty: prepare proceeds despite shortfalls (loud warning)
 : "${DEBUG:=}"                    # non-empty prints each on-chain command (password redacted)
 : "${RESCAN_FROM:=now}"           # setup rescan: 'now' (fast) or unix time / 0 for full
@@ -407,6 +410,56 @@ stage_alltime() {
 }
 
 # ---------------------------------------------------------------------------
+# Stage: clean (dry-run unless CONFIRM=1)
+# ---------------------------------------------------------------------------
+clean_path() {
+    path=$1
+    if [ ! -e "$path" ]; then
+        return 0
+    fi
+    CLEAN_FOUND=1
+    if [ "${CONFIRM:-}" = "1" ]; then
+        rm -rf -- "$path"
+        log "removed: $path"
+    else
+        log "would remove: $path"
+    fi
+}
+
+stage_clean() {
+    CLEAN_FOUND=0
+    if [ "${CONFIRM:-}" = "1" ]; then
+        log "clean: deleting generated artifacts under $DATA_DIR"
+    else
+        log "clean: dry run under $DATA_DIR (set CONFIRM=1 to delete)"
+    fi
+    for name in \
+        manual.csv bank-list.txt bank-rows.csv \
+        utxoproof.db utxoproof.db-wal utxoproof.db-shm \
+        portfolio bank current-status alltime
+    do
+        clean_path "$DATA_DIR/$name"
+    done
+    # Report output is one directory per tax year (four digits).
+    for year_dir in "$DATA_DIR"/[0-9][0-9][0-9][0-9]; do
+        if [ -d "$year_dir" ]; then
+            clean_path "$year_dir"
+        fi
+    done
+    # Leftovers from interrupted multi-bank imports.
+    for leftover in "$DATA_DIR"/bank-rows-*.csv; do
+        if [ -e "$leftover" ]; then
+            clean_path "$leftover"
+        fi
+    done
+    if [ "$CLEAN_FOUND" -eq 0 ]; then
+        log "clean: nothing to remove"
+    elif [ "${CONFIRM:-}" != "1" ]; then
+        log "clean: dry run only; re-run with CONFIRM=1 to delete"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Mode logic
 # ---------------------------------------------------------------------------
 case "$MODE" in
@@ -449,8 +502,11 @@ case "$MODE" in
         stage_bank
         stage_fiat
         ;;
+    clean)
+        stage_clean
+        ;;
     *)
-        fail "unknown MODE='$MODE'; use 'prepare' or 'refresh'"
+        fail "unknown MODE='$MODE'; use 'prepare', 'refresh' or 'clean'"
         ;;
 esac
 
