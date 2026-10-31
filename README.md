@@ -23,15 +23,17 @@ Price history ships vendored (`utxoproof/data/btc_eur_daily.csv` from the first 
 
 ## Status
 
-Implemented and covered by tests + live regtest runs: exchange imports
-(Kraken ledgers + trades join incl. margin/rollover, Coinbase, Binance, Bisq)
-and Belgian bank parsing, EUR price oracle,
-Belgian classifier with `utxoproof.toml`, HTML reports (tax, status, privacy,
-advisory, provenance/saga, all-time) with evidence ZIPs, KYC propagation,
-all-parent provenance with persisted bank↔exchange↔chain links and
-value-weighted coverage, on-chain descriptor sync against Bitcoin Core, and
-demo reports published to GitHub Pages on every `main` push. See the sprint
-roadmap in `utxoproof-plan_v7.md` for what remains.
+Implemented and covered by tests + live regtest runs: the v8 account workflow
+(one owner, per-account folders, exported descriptors including multisig,
+BIP329 labels, Electrum primary / Bitcoin Core optional sync, discovery and
+`utxoproof run`), exchange imports (Kraken ledgers + trades join incl.
+margin/rollover, Coinbase, Binance, Bisq) and Belgian bank parsing, EUR price
+oracle, Belgian classifier with `utxoproof.toml`, HTML reports (tax, status,
+privacy, advisory, provenance/saga, all-time) with evidence ZIPs, KYC
+propagation, all-parent provenance with persisted bank↔exchange↔chain links
+and value-weighted coverage, and demo reports published to GitHub Pages on
+every `main` push. `utxoproof-plan_v7.md` remains the tax/saga spec; the v8
+input and account workflow are documented in the [Slowstart guide](docs/USAGE.md).
 
 ## Installation
 
@@ -47,7 +49,8 @@ python3 -m venv .venv
 .venv/bin/pip install "rp2 @ git+https://github.com/natashaklum/rp2.git@b1995bf1a07665035a46cf331cb06ccccd347ce2"
 .venv/bin/pip install --require-hashes -r requirements.txt
 .venv/bin/pip install -e . --no-deps
-cp utxoproof.example.toml utxoproof.toml  # then edit municipality rate etc.
+mkdir -p ~/utxoproof-data/input
+cp utxoproof.example.toml ~/utxoproof-data/input/utxoproof.toml  # edit rate/chain
 ```
 
 Faster alternative with [uv](https://docs.astral.sh/uv/):
@@ -64,7 +67,7 @@ Docker (mainnet stack per `docker-compose.yml`; regtest dev stack in
 `docker-compose.regtest.yml`):
 
 ```bash
-cp utxoproof.example.toml utxoproof.toml
+cp utxoproof.example.toml utxoproof.toml   # Docker bind-mount layout
 mkdir -p sources output
 docker compose run --rm utxoproof sync --rpc-url http://bitcoind:8332 ...
 ```
@@ -74,6 +77,28 @@ docker compose run --rm utxoproof sync --rpc-url http://bitcoind:8332 ...
 Five minutes. For the twenty-minute version with concepts, config walkthrough
 and troubleshooting, read the [Slowstart guide](docs/USAGE.md).
 
+The primary workflow is one owner with many accounts:
+
+```text
+input/
+  utxoproof.toml
+  accounts/<account-id>/account.toml   # wallet, bank, credit_card, exchange, broker
+```
+
+```bash
+.venv/bin/utxoproof discover --input examples/input_v8
+.venv/bin/utxoproof run --input examples/input_v8 --data-dir /tmp/utxoproof-demo --offline
+.venv/bin/utxoproof run --input examples/input_v8 --data-dir /tmp/utxoproof-demo --plan
+```
+
+`run` imports labels/exchange/bank files, syncs wallet scripts through the
+configured Electrum server (or Core with `[chain] backend = "core"`), builds the
+tax report + evidence ZIP and the account/provenance dashboard (`--no-zip`
+skips the bundle). `examples/run.sh` is a thin environment-variable wrapper
+around it.
+
+Offline CSV checks still work without an input tree:
+
 ```bash
 .venv/bin/utxoproof compute --input tests/fixtures/manual_2023.csv --year 2023
 .venv/bin/utxoproof status --input tests/fixtures/manual_2023.csv --price 40000
@@ -81,7 +106,8 @@ and troubleshooting, read the [Slowstart guide](docs/USAGE.md).
 .venv/bin/python scripts/build_demo.py --out site  # all demo reports + index
 ```
 
-On-chain (needs a node; regtest via `docker-compose.regtest.yml`):
+Optional Core-only diagnosis (needs a node; regtest via
+`docker-compose.regtest.yml`):
 
 ```bash
 .venv/bin/utxoproof setup --rpc-url http://127.0.0.1:18443 --rpc-user utxoproof \
@@ -104,17 +130,22 @@ Checks (see [CONTRIBUTING.md](CONTRIBUTING.md)):
 ```text
 utxoproof/
   belgian_tax.py  # 33% flat + communal surcharge, proportional fee-split
-  cli.py          # compute/report/status/privacy/advise/provenance/setup/sync
-  db.py + schema.sql  # Sec. 8 SQLite schema (tx graph, prices, KYC…)
+  cli.py          # discover/run + compute/report/status/privacy/advise/provenance/setup/sync
+  db.py + schema.sql  # Sec. 8 SQLite schema + accounts/scripts/labels (v8)
+  accounts.py     # v8 per-folder manifests, descriptor registry, attribution
+  labels.py       # BIP329 import, account scope, user-label precedence
+  descriptors.py  # descriptors (multisig/multipath) + address/script derivation
+  electrum.py + electrum_sync.py  # primary chain backend: protocol + graph sync
+  bitcoin_rpc.py + onchain.py  # optional Core JSON-RPC, descriptor import, sync
+  runner.py       # discover/run orchestration and report/site generation
   exchange.py + kraken_csv.py (ledgers + trades join, margin/rollover,
     spend/receive, adjustments, earn subtypes; subclass/wallet captured)
     / coinbase_csv.py / binance_csv.py / bisq_csv.py
   banks.py + matching.py  # Belgian bank profiles, fiat-leg matcher
   price_oracle.py  # Kraken OHLC + CoinGecko + ECB, SQLite cache
   classifier.py + config.py  # Sec. 6 scores, utxoproof.toml
-  descriptors.py  # BIP32/84 templates + address derivation (embit)
-  bitcoin_rpc.py + onchain.py  # Core JSON-RPC, tx-graph sync
-  kyc.py + advisory.py + provenance.py + saga.py + evidence.py + reports.py
+  portfolio.py + reports.py  # account dashboard, tax/status/provenance/bank pages
+  kyc.py + advisory.py + provenance.py + saga.py + evidence.py
 tests/
   fixtures/  # synthetic only, hand-verified, never real data
 ```

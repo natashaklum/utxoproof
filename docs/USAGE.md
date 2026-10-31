@@ -17,6 +17,10 @@ command below is also documented with flags in `utxoproof --help`.
 - **The SQLite DB** (`~/.utxoproof/utxoproof.db` by default) holds the on-chain
   transaction graph, price cache, KYC state and sync position. CSV flows work
   without it; on-chain and price features need it.
+- **The v8 input tree** is one owner with account folders
+  (`input/accounts/<id>/account.toml`). Descriptors establish on-chain ownership
+  per output; BIP329 labels are display metadata, not tags. `utxoproof run`
+  orchestrates labels, sync, imports and reports from it.
 
 ## 2. Installation
 
@@ -34,7 +38,8 @@ python3 -m venv .venv
 .venv/bin/pip install "rp2 @ git+https://github.com/natashaklum/rp2.git@b1995bf1a07665035a46cf331cb06ccccd347ce2"
 .venv/bin/pip install --require-hashes -r requirements.txt
 .venv/bin/pip install -e . --no-deps
-cp utxoproof.example.toml utxoproof.toml
+mkdir -p ~/utxoproof-data/input
+cp utxoproof.example.toml ~/utxoproof-data/input/utxoproof.toml
 ```
 
 The pinned git SHA *is* rp2's integrity (git URLs can't carry hashes, so it
@@ -49,7 +54,8 @@ git clone --recurse-submodules https://github.com/natashaklum/utxoproof
 cd utxoproof
 uv venv
 VIRTUAL_ENV=.venv uv pip install -e ".[dev]"
-cp utxoproof.example.toml utxoproof.toml
+mkdir -p ~/utxoproof-data/input
+cp utxoproof.example.toml ~/utxoproof-data/input/utxoproof.toml
 ```
 
 uv is a single static binary outside the Debian archive — convenient and
@@ -89,7 +95,7 @@ price cache, evidence files — lives under a single data directory:
 
 ```bash
 git clone --recurse-submodules https://github.com/natashaklum/utxoproof utxoproof
-mkdir -p ~/utxoproof-data
+mkdir -p ~/utxoproof-data/input/accounts
 export UTXOPROOF_DATA_DIR=~/utxoproof-data   # put this in your shell profile
 ```
 
@@ -106,81 +112,242 @@ utxoproof --data-dir /tmp/throwaway status --input manual.csv --price 40000
 For a first real-data trial, point the variable at an empty folder: the worst
 case is one folder to delete.
 
-## 2c. Complete runs: `run.sh` (`prepare` / `refresh` / `clean`)
+## 2c. Complete runs: `utxoproof run`, `discover`, thin `run.sh`
 
-`examples/run.sh` is one self-contained script with the settings on top — copy
-it next to your data dir and edit the paths, or override any variable from the
-environment (`DATA_DIR`, `KRAKEN_LEDGERS`, `KRAKEN_TRADES`, `TAX_YEAR`,
-`BTC_PRICE`, `CONFIG_FILE`, `XPUB`, `FINGERPRINT`, `RPC_URL`, `ENTITIES_FILE`,
-plus `UTXOPROOF_BIN` to point at your install):
+The v8 input tree is the source of truth: **one owner, many accounts**. There
+is no central wallet/account list. Each folder under `input/accounts/` owns its
+manifest and its type-specific files (descriptors, labels, statements, exchange
+exports, balances):
 
-```bash
-cp examples/run.sh ~/utxoproof-data/run.sh
-$EDITOR ~/utxoproof-data/run.sh   # set KRAKEN_LEDGERS etc.
-bash ~/utxoproof-data/run.sh      # prepare: import -> check -> compute -> report
-TAX_YEAR=2023 bash ~/utxoproof-data/run.sh   # one filing year only
-MODE=refresh bash ~/utxoproof-data/run.sh   # repeatable: refresh + alltime
-MODE=clean bash ~/utxoproof-data/run.sh     # dry run; CONFIRM=1 deletes
+```text
+input/
+  utxoproof.toml
+  accounts/
+    ledger-main/account.toml + receive.txt + labels.jsonl
+    multisig-vault/account.toml + receive.txt + change.txt
+    kbc-checking/account.toml + statements/**/*.csv
+    kbc-visa/account.toml + statements/**/*.csv
+    kraken/account.toml + ledgers.csv + trades.csv
+    degiro/account.toml
 ```
 
-`MODE=clean` is a dry run by default: it lists exactly what a run generated
+Account kinds are `wallet` (on-chain), `bank`, `credit_card` (a liability),
+`exchange`, and `broker` (informational only). The folder name is the default
+account id; add `id = "..."` to override it. Minimal manifests:
+
+```toml
+# accounts/ledger-main/account.toml
+kind = "wallet"
+label = "Ledger main"
+network = "mainnet"
+gap_limit = 200
+descriptor_receive_file = "receive.txt"
+descriptor_change_file = "change.txt"
+labels_file = "labels.jsonl"        # optional; labels.jsonl is auto-detected
+tags = ["cold-storage"]
+```
+
+A multisig account exports both descriptors from Sparrow. Single-sig can use
+the shorthand instead:
+
+```toml
+kind = "wallet"
+label = "Hot wallet"
+xpub = "zpub..."
+fingerprint = "73c5da0a"
+purpose = 84
+```
+
+```toml
+# accounts/kbc-checking/account.toml
+kind = "bank"
+label = "KBC checking"
+profile = "kbc-bankaccount"   # explicit; CSV files under statements/ are auto-found
+currency = "EUR"
+[[balances]]
+amount_eur = "12500.00"
+as_of = "2023-12-31"
+```
+
+`kind = "credit_card"` uses the same shape with a card profile and a negative
+liability balance. Exchange and broker accounts:
+
+```toml
+# accounts/kraken/account.toml
+kind = "exchange"
+label = "Kraken"
+exchange = "kraken"
+ledgers = ["ledgers.csv"]
+trades = ["trades.csv"]
+
+# accounts/degiro/account.toml
+kind = "broker"
+label = "DEGIRO"
+broker = "degiro"
+[[holdings]]
+symbol = "IWDA"
+quantity = "25"
+value_eur = "2125.00"
+as_of = "2023-12-31"
+note = "Informational only"
+```
+
+Generated files never go back into `input/`; the DB, imports and HTML live
+under `--data-dir`. Discover the tree offline before trusting it:
+
+```bash
+utxoproof discover --input ~/utxoproof-data/input
+utxoproof discover --input ~/utxoproof-data/input --json
+```
+
+`discover` parses every manifest/statement/label file, derives descriptors,
+rejects duplicate scripts/addresses across accounts, and never writes. Add
+`--online` to check the configured Electrum/Core backend. Then inspect the run
+plan and execute:
+
+```bash
+utxoproof run --input ~/utxoproof-data/input --data-dir ~/utxoproof-data --plan
+utxoproof run --input ~/utxoproof-data/input --data-dir ~/utxoproof-data \
+  --year 2023
+utxoproof run --input ~/utxoproof-data/input --data-dir ~/utxoproof-data \
+  --offline   # imports + reports; skip Electrum/Core
+```
+
+`run` writes `imports/` (merged exchange ledgers/trades, `manual.csv`, bank
+rows), the SQLite DB, `reports/<year>/report.html` plus the evidence ZIP (the
+account source files, intermediates, attachments and the report; the root
+`utxoproof.toml` is excluded because it may contain RPC credentials), the full
+report, the account overview and account pages, provenance pages, and the bank
+review page.
+Use `--only labels,sync,exchanges,banks,report,portfolio` for a partial rerun;
+`--force-rescan` for wallets funded before the first sync; `--no-zip` skips
+the evidence bundle. Verify on-chain
+balances against the selected backend with:
+
+```bash
+utxoproof reconcile --input ~/utxoproof-data/input \
+  --db ~/utxoproof-data/utxoproof.db
+```
+
+`examples/run.sh` is now a thin wrapper around `utxoproof run`; it maps the
+common environment variables and adds no pipeline logic:
+
+```bash
+INPUT=~/utxoproof-data/input DATA_DIR=~/utxoproof-data bash examples/run.sh
+TAX_YEAR=2023 bash examples/run.sh
+PLAN=1 bash examples/run.sh
+OFFLINE=1 bash examples/run.sh
+NO_ZIP=1 bash examples/run.sh
+```
+
+The old self-contained v7 script is `examples/run_legacy.sh`. It still owns
+the legacy `MODE=prepare` / `MODE=refresh` / `MODE=clean` lifecycle,
+`WALLETS`/`XPUB`, `KRAKEN_LEDGERS`, `BANK_CSV`, `ENTITIES_FILE` and the
+legacy report layout described below; use it only for an existing v7 data dir.
+Its `MODE=clean` is a dry run by default: it lists exactly what a run generated
 (`manual.csv`, `bank-list.txt`, `bank-rows*.csv`, the DB, year bundles,
 `current-status/`, `alltime/`, `portfolio/`, `bank/`) and deletes nothing.
 Re-run with `CONFIRM=1` to remove those artifacts. User sources, attachments
 and `utxoproof.toml` are never touched.
 
-`TAX_YEAR` empty (the default) covers every year present in `manual.csv` —
-one `compute` row and one `<year>/report.html` + evidence ZIP each, plus the
-single `status` snapshot and `alltime` summary. Set `TAX_YEAR=2023` for one
-filing year only. Folders are created per data year; year dirs left behind by
-older runs are never auto-deleted, so a stale `2022/` just means an earlier
-run covered 2022. The same works granularly: `compute --all-years` prints the
-per-year table and `report --all-years --out DIR` writes `DIR/<year>/`
-bundles; `--year`/`--alltime` keep their single-shot behavior. Every page
-menu lists every built year (`Tax 2022 · Tax 2023 · …`, current marked), so
-per-year reports link to each other instead of stranding all but the latest.
+`TAX_YEAR` empty in the legacy wrapper covers every year present in
+`manual.csv` — one `compute` row and one `<year>/report.html` + evidence ZIP
+each, plus the single `status` snapshot and `alltime` summary. Set
+`TAX_YEAR=2023` for one filing year only. Folders are created per data year;
+year dirs left behind by older runs are never auto-deleted, so a stale `2022/`
+just means an earlier run covered 2022. The same works granularly:
+`compute --all-years` prints the per-year table and `report --all-years
+--out DIR` writes `DIR/<year>/` bundles; `--year`/`--alltime` keep their
+single-shot behavior. Every page menu lists every built year (`Tax 2022 ·
+Tax 2023 · …`, current marked), so per-year reports link to each other instead
+of stranding all but the latest.
 
 Caveat: an *exported* `TAX_YEAR` shadows the default for every later run in
 that shell — `unset TAX_YEAR` (or `export TAX_YEAR=`) to get all-years back.
 Both modes log the effective setting at startup (`years: all in manual.csv`
 vs `years: 2023`), so a single-year run never happens silently.
 
-`MODE=prepare` (the default) **stops** when `check` reports shortfalls — first
-runs deserve interrogation, not momentum. If the gaps are understood and you
-want numbers-with-caveats anyway, `ALLOW_SHORTFALLS=1` proceeds with a loud
+`MODE=prepare` (the legacy default) **stops** when `check` reports shortfalls —
+first runs deserve interrogation, not momentum. If the gaps are understood and
+you want numbers-with-caveats anyway, `ALLOW_SHORTFALLS=1` proceeds with a loud
 warning (figures are upper bounds, never filing-ready). `MODE=refresh` is
 idempotent (full rewrite, no merge logic) and safe to re-run or cron once you
-trust the data.
-All three print `==>` stage lines and honor `UTXOPROOF_DATA_DIR`; prepare and
-refresh are covered by end-to-end tests running them against fixtures, and
-clean is tested for dry-run and `CONFIRM=1` behavior.
+trust the data. All three print `==>` stage lines and honor
+`UTXOPROOF_DATA_DIR`; prepare and refresh are covered by end-to-end tests
+running them against fixtures, and clean is tested for dry-run and `CONFIRM=1`
+behavior.
 
-## 2d. On-chain wallets and the entity overview
+## 2d. On-chain wallets and the account overview
 
-Exchange history alone never shows on-chain UTXOs. With a Bitcoin Core node
-reachable, set `WALLETS` (pipe-separated `name:fingerprint:xpub` entries,
-e.g. `"cold:ABCD:xpub…|hot:EF12:ypub…"`) — or legacy `XPUB` + `FINGERPRINT` +
-`WALLET` for a single wallet — and the RPC settings in `run.sh`: `setup`
-creates each watch-only wallet and imports `m/84'/0'/0'`-style descriptors
-(purpose/coin/account hardened, `/0/*` and `/1/*` below the account xpub;
-derivation numbers stay global across wallets), then `sync` pulls every
-wallet's transactions into the shared `utxoproof.db`, attributing each output
-to the wallets that list its transaction (shared cold→hot transfers land in
-both). Verify with `utxoproof advise --db <data-dir>/utxoproof.db` —
-one line per unspent output — or `report --full` (advisory + provenance
-sections come from the DB; the tax/status pages stay exchange-CSV based).
+Wallet accounts carry exported Sparrow/Core descriptors (multisig included) or
+the single-sig `xpub` + `fingerprint` + `purpose` shorthand. A descriptor pair
+may use BIP389 multipath `<0;1>`, or explicit receive/change files. Ownership
+is attributed **per output** through the derived script registry; address
+labels never establish ownership, and duplicate scripts across account folders
+abort the run.
 
-For the demo-style overview page (`overview/overview.html` with entities),
-copy `examples/entities.example.toml`, declare one `[[entities]]` per wallet /
-bank / exchange (the entity whose `wallet` matches the synced wallet owns the
-chain UTXOs; `[[fiat]]` rows attach euro balances), and run:
+Electrum is the primary sync backend, so no Bitcoin Core wallet import is
+needed. Set it in `input/utxoproof.toml`:
+
+```toml
+[chain]
+backend = "electrum"
+network = "mainnet"
+electrum_url = "ssl://127.0.0.1:50002"
+electrum_ca_file = ""   # your self-hosted server's CA, if private
+```
+
+Then run the v8 workflow as above. `utxoproof run` derives each wallet's scripts,
+batches scripthash histories, fetches raw transactions and block-header
+timestamps, extends the gap limit when activity reaches it, and attributes every
+output to its account. Bitcoin Core remains available as
+`backend = "core"` (with the `[chain]` RPC fields) for diagnosis or fallback;
+Core sync imports descriptors and paginates `listtransactions`, but ownership
+still comes from `account_scripts`, not a wallet-wide label.
+
+Per-account pages and the owner-wide overview are generated by `run`. For a
+low-level rebuild from an account tree:
+
+```bash
+utxoproof portfolio --input ~/utxoproof-data/input \
+  --db ~/utxoproof-data/utxoproof.db --price 40000 \
+  --out ~/utxoproof-data/portfolio
+```
+
+### BIP329 labels
+
+Sparrow/Electrum BIP329 JSONL exports are imported as first-class labels, not
+tags. Put `labels.jsonl` in the wallet account folder (or name it in
+`labels_file`); `run` imports it automatically. Supported label types are
+`tx`, `addr`, `output`, and `input`; unknown types are preserved but not shown.
+Each row keeps its account scope, source file and line, and origin `bip329`.
+
+User labels (`origin = "user"`) win on display and survive re-import; imported
+rows are replaced, never merged over user assertions. Add one after the account
+DB exists:
+
+```bash
+utxoproof label --account ledger-main --type output --ref <txid>:0 --label "cold storage"
+utxoproof label --account ledger-main --type output --ref <txid>:0 --delete
+```
+
+Labels are display metadata only: they do not establish output ownership and do
+not change tags, tax treatment, or KYC. Account pages and provenance pages show
+them next to UTXOs and addresses.
+
+### Legacy entities file (v7)
+
+The old overview model still works for existing low-level commands:
+`examples/entities.example.toml`, one `[[entities]]` entry per wallet / bank /
+exchange, with the entity whose `wallet` matches the synced wallet owning the
+chain UTXOs, and `[[fiat]]` rows attaching euro balances:
 
 ```bash
 utxoproof portfolio --db <data-dir>/utxoproof.db --entities entities.toml \
   --price 40000 --out <data-dir>/portfolio
 ```
 
-### The entities file: what it is, why you need it, what goes in it
+#### What it is, why you need it, what goes in it
 
 The chain knows your BTC; nothing in the pipeline knows your euros or what
 each wallet *is*. The entities file is the one place where **you** assert
@@ -191,12 +358,12 @@ derived. Concretely:
   (stable, URL-safe: it becomes `<id>.html`), `kind` (`wallet` | `bank` |
   `exchange`), human `label`/`detail`, and for exactly the on-chain wallet(s)
   the `wallet` name matching `setup`/`sync --wallet` (several wallets allowed,
-  see `WALLETS` in `run.sh`). Plus `[[fiat]]` rows: `entity_id`, `amount_eur`,
+  see `WALLETS` in `run_legacy.sh`). Plus `[[fiat]]` rows: `entity_id`, `amount_eur`,
   an `as_of` balance date, a `note` saying where the figure came from, and
   optionally `statements = [...]` on the entity pointing at the evidencing
   files (relative to the TOML file). `fiat-check` audits exactly this:
   missing/future/stale (`--max-age-days`, default 90) dates and absent
-  statement files warn without halting; it runs as a `run.sh` stage whenever
+  statement files warn without halting; it runs as a legacy `run_legacy.sh` stage whenever
   `ENTITIES_FILE` is set.
 - **What does NOT belong:** secrets — no xpubs, no private keys, no RPC
   passwords; the file sits next to your data dir, not a vault, and nothing
@@ -213,14 +380,16 @@ derived. Concretely:
   wallet with no matching entry aborts naming it, never silently misattributes.
   `utxoproof portfolio` prints the resulting allocation, so misassignment is
   visible immediately.
-- **Tags (optional):** `[entity_tags]` asserts free tags per entity id
-  (inherited by every holding of that entity), `[utxo_tags]` per
-  `"txid:vout"` ref (e.g. `"abc123:0" = ["cash", "gift"]`). Use them for what
-  only you know — how fiat entered (`bank-transfer`, `cash`, `card`), custody
-  roles (`cold-storage`), provenance notes. Derived tags always apply first
-  (behavior bucket, channel from acquisition source, `mixed`); yours extend
-  them, and an asserted channel wins its donut bucket. Unknown entities and
-  malformed refs abort like `[[fiat]]` ghosts.
+- **Tags (optional):** in v8 put `tags = ["cold-storage"]` in the account
+  manifest (inherited by every holding of that account) and an optional
+  `[utxo_tags]` table in the account manifest; the legacy entities path uses
+  `[entity_tags]` per entity id and `[utxo_tags]` per `"txid:vout"` ref (e.g.
+  `"abc123:0" = ["cash", "gift"]`). Use them for what only you know — how fiat
+  entered (`bank-transfer`, `cash`, `card`), custody roles (`cold-storage`),
+  provenance notes. Derived tags always apply first (behavior bucket, channel
+  from acquisition source, `mixed`); yours extend them, and an asserted channel
+  wins its donut bucket. Unknown entities and malformed refs abort like
+  `[[fiat]]` ghosts.
 
 ### Tags and tag charts: what the colors mean
 
@@ -246,16 +415,19 @@ flags recommend (*what to do*: sell/hold/borrow/estate/tax-loss). The tables
 label the columns exactly that way, and the two layers never duplicate: the
 old `speculation_tainted` / `privacy_risk` flags now live only as tags.
 
-That writes `overview/overview.html`, `entities/<id>.html`, and
-`provenance/provenance_<txid>_<vout>.html` per unspent UTXO, so entity-page
-UTXO links resolve. Every page walks the **full all-parent saga**: consolidation
+The v8 account dashboard writes `reports/overview/overview.html`,
+`reports/entities/<id>.html` (one account page per account) and
+`reports/provenance/provenance_<txid>_<vout>.html` per unspent UTXO, so
+account-page UTXO links resolve. The legacy low-level `portfolio` command uses
+`overview/`, `entities/` and `provenance/` under `--out`. Every page walks the **full all-parent saga**: consolidation
 parents each carry their proportional share (an 80/20 funding split is visible,
 not hidden behind the largest parent), fan-out siblings are listed, and hitting
 the `--depth`/`--max-nodes` caps shows the truncated share instead of a
-complete-looking trail. The portfolio cards and entity table show each UTXO's
+complete-looking trail. The portfolio cards and account table show each UTXO's
 **bank-proven coverage**; candidates never raise it.
 
-Pass `--ledgers ledgers.csv` (also wired in `run.sh` via `KRAKEN_LEDGERS`) plus
+Pass `--ledgers ledgers.csv` (v8 `run` finds the exchange account folder; the
+legacy wrapper uses `KRAKEN_LEDGERS`) plus
 bank statements (`--bank-csv`/`--bank-type`, or `--bank-list`) to the same
 commands and the saga joins the layers in evidence order: bank debit →
 exchange EUR deposit → trade (FIFO EUR balance replay) → BTC withdrawal (FIFO
@@ -268,8 +440,8 @@ remembered in the DB and survives rebuilds; deleting a supplied source clears
 its derived links on the next run. Ledgers with margin legs need the same
 `--trades trades.csv` join as `import`.
 
-`report --full --entities entities.toml` folds the saga and coverage into the
-full report the same way. The old fiat funding prologue still appears above
+`report --full --entities entities.toml` (or v8 `run`) folds the saga and
+coverage into the full report the same way. The old fiat funding prologue still appears above
 the saga as a candidate cross-check (nearest exact-BTC buys + bank match);
 without `--bank-csv` that prologue is omitted, while the saga still shows
 exchange-only links when `--ledgers` alone is supplied. Without either source,
@@ -279,7 +451,8 @@ rebuild them.
 Zero on-chain balance with the wallet present almost always means descriptors
 were imported with timestamp `now` (no historical rescan): check
 `listdescriptors` for the two `wpkh` entries, then either `rescanblockchain`
-manually or set `RESCAN_FROM=0` (unix time also accepted) in `run.sh` before
+manually or set `RESCAN_FROM=0` (unix time also accepted) in
+`run_legacy.sh` before
 `setup` — the default `now` keeps first setups fast.
 
 Only outputs proven yours count: `sync` marks each output via `getaddressinfo`
@@ -292,22 +465,23 @@ utxoproof reconcile --db <data-dir>/utxoproof.db --rpc-url ... --wallet <name>
 ```
 
 which prints `RECONCILED (gap 0)` or `GAP … BTC` instead of eyeballing
-`overview.html` against `getbalances`. With several wallets, run it once per
+`overview.html` against `getbalances`. For v8, `utxoproof reconcile --input
+~/utxoproof-data/input` compares every account against Electrum scripthash
+balances in one pass. With several wallets on the Core path, run it once per
 wallet: the DB side counts that wallet's attributed outputs plus legacy
 unattributed rows (flagged, never silently dropped).
 
 ## 3. Configuration (`utxoproof.toml`)
 
-Optional, not mandatory. `report` and `import` read it; every other command
-runs on documented defaults today. When several copies exist, the first hit
-wins: `--config` flag → `./utxoproof.toml` → `$UTXOPROOF_DATA_DIR/utxoproof.toml`
-→ `~/.utxoproof/utxoproof.toml`. The margin-trading note, for example, only
-appears when the winning file leaves `used_leverage` unset — and it names the
-file, so there is never a mystery about which copy counts. Your data-folder
-copy is therefore a first-class citizen, not a spare.
+For v8 the config belongs at `input/utxoproof.toml` next to `accounts/`.
+Legacy commands keep the old search order: `--config` flag → `./utxoproof.toml`
+→ `$UTXOPROOF_DATA_DIR/utxoproof.toml` → `~/.utxoproof/utxoproof.toml`.
+Copy `utxoproof.example.toml` and review its sections:
 
-Copy `utxoproof.example.toml` and review three sections:
-
+- `[owner]`: the one taxpayer name shown in the report header.
+- `[chain]`: `backend = "electrum"` (primary) or `"core"` (optional fallback);
+  Electrum URL/CA or Core RPC URL/user/password/wallet.
+- `[reporting]`: optional `as_of` and `tax_year`; `run --as-of`/`--year` win.
 - `[taxpayer]`: your report reference label and **communal surcharge rate**
   (Brussels 0.0587, Ghent 0.076, Antwerp 0.08, average 0.07). This rate lands
   directly on your computed tax, so set your municipality's value.
@@ -316,8 +490,6 @@ Copy `utxoproof.example.toml` and review three sections:
   classifier cannot observe these; wrong flags here mean a wrong classification.
 - `[accounting]`: cost basis method (`moving_average` default; `fifo`, `lifo`,
   `hifo`, `lofo` also supported via rp2).
-
-Bitcoin/RPC/output sections arrive with their sprints and are ignored for now.
 
 ## 4. Flow A — exchange history to tax report
 
@@ -392,9 +564,14 @@ to `report.html` together with `evidence.db` and `manifest.json`. `--no-zip`
 skips it; `--alltime` writes a multi-year summary instead. Open `report.html`
 in a browser and print to PDF for filing.
 
-## 5. Flow B — on-chain wallets
+## 5. Flow B — on-chain wallets (v8 and low-level)
 
-You need Bitcoin Core (your own node for real use; regtest for practice —
+The recommended path is a wallet account folder with an exported descriptor
+(multisig included) and `utxoproof run`; see section 2c/2d. It uses Electrum by
+default and attributes each output to its account. The low-level commands below
+remain for diagnosis and for a single-wallet Core-only setup.
+
+Bitcoin Core is optional (your own node for real use; regtest for practice —
 see `docker-compose.regtest.yml`). One-time setup per xpub:
 
 ```bash
@@ -435,10 +612,21 @@ value-weighted coverage badge.
 ## 5b. Flow C — bank statements (fiat-leg corroboration)
 
 Bank CSVs prove the euro side of your trades. They corroborate exchange legs
-(plan Sec. 11), join the evidence ZIP via `--source`, and feed the
-`[[fiat]]` rows you hand-assert in `entities.toml` — but they **never enter
-the cost pool**: a statement is a list of movements, not a balance, and only
-you know the opening position.
+(plan Sec. 11), join the evidence ZIP via `--source`, and feed account balances
+— but they **never enter the cost pool**: a statement is a list of movements,
+not a balance, and only you know the opening position.
+
+For v8, put each export under its account folder; discovery finds every CSV
+recursively and uses the manifest's explicit profile:
+
+```text
+input/accounts/kbc-checking/account.toml
+input/accounts/kbc-checking/statements/2023/kbc.csv
+```
+
+`utxoproof run` parses them, writes `imports/bank-rows.csv` with `account_id`
+and source file/line, and renders the bank review page. For a standalone
+conversion:
 
 ```bash
 .venv/bin/utxoproof import --file ~/kbc-checking.csv --type kbc --out /tmp/utxo/bank-rows.csv
@@ -462,10 +650,12 @@ other PII columns are deliberately never ingested; non-zero card fees surface
 in the description (`+ €X fee`) rather than silently. Every profile header is
 best-effort and **UNVERIFIED against live exports** — columns match by alias lists, so if your export renames a
 header, check whether an alias already covers it and report the exact header
-line otherwise; do not silently hand-edit the CSV. `run.sh` automates this
-with `BANK_CSV` + `BANK_TYPE`: `|`-separated `type:path` specs (bare paths
-use `BANK_TYPE`), e.g. `BANK_CSV="kbc:~/exports/kbc.csv|ing:~/my exports/ing.csv"`.
-`stage_bank` converts each file with its own profile, merges them into one
+line otherwise; do not silently hand-edit the CSV. v8 `run` auto-discovers
+account statements and merges them. The legacy `run_legacy.sh` still automates
+its own layout with `BANK_CSV` + `BANK_TYPE`: `|`-separated `type:path` specs
+(bare paths use `BANK_TYPE`), e.g.
+`BANK_CSV="kbc:~/exports/kbc.csv|ing:~/my exports/ing.csv"`. Its `stage_bank`
+converts each file with its own profile, merges them into one
 `$DATA_DIR/bank-rows.csv` (rows keep their source file), renders one merged
 `bank/` review page, and attaches every statement as a report `--source`.
 Spaces survive (split on `|` only; `bank-list.txt` carries one spec per line

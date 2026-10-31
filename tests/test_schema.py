@@ -14,6 +14,9 @@ EXPECTED_TABLES = {
     "evidence_links",
     "provenance_links",
     "advisory_cache",
+    "accounts",
+    "account_scripts",
+    "labels",
 }
 
 
@@ -103,8 +106,10 @@ def test_migration_adds_is_mine_to_old_db() -> None:
     )
     db.execute("INSERT INTO tx_outputs (txid, vout, value_sat) VALUES ('old', 0, 50000)")
     init_db(db)  # must add the column without touching existing rows
-    row = db.execute("SELECT value_sat, is_mine FROM tx_outputs WHERE txid='old'").fetchone()
-    assert row == (50000, 1)
+    row = db.execute(
+        "SELECT value_sat, is_mine, account_id, script_hex FROM tx_outputs WHERE txid='old'"
+    ).fetchone()
+    assert row == (50000, 1, None, None)
     tables = {
         row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     }

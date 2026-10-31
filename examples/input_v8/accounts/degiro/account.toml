@@ -1,0 +1,10 @@
+kind = "broker"
+label = "DEGIRO"
+broker = "degiro"
+tags = ["stocks"]
+[[holdings]]
+symbol = "IWDA"
+quantity = "25"
+value_eur = "2125.00"
+as_of = "2023-12-31"
+note = "Informational only; Belgian stock tax rules pending"

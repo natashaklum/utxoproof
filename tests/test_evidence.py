@@ -154,3 +154,38 @@ def test_report_year_flags_are_mutually_exclusive() -> None:
         main(["report", "--input", str(FIXTURE), "--year", "2023", "--alltime", "--out", "x"])
     with pytest.raises(SystemExit):
         main(["report", "--input", str(FIXTURE), "--out", "x"])
+
+
+def test_evidence_zip_keeps_duplicate_basenames_and_custom_paths(tmp_path: Path) -> None:
+    first = tmp_path / "a" / "account.toml"
+    second = tmp_path / "b" / "account.toml"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    first.write_text('id = "a"\n', encoding="utf-8")
+    second.write_text('id = "b"\n', encoding="utf-8")
+    report = tmp_path / "report.html"
+    report.write_text("<html></html>", encoding="utf-8")
+    manifest = tmp_path / "evidence.db"
+    db = sqlite3.connect(str(manifest))
+    from utxoproof.db import init_db
+
+    init_db(db)
+    db.close()
+    zip_path = produce_evidence_zip(
+        2023,
+        manifest,
+        report,
+        [first, second],
+        [],
+        tmp_path,
+        timestamp="20240101T000000Z",
+        arcnames={
+            str(first.resolve()): "accounts/a/account.toml",
+            str(second.resolve()): "accounts/b/account.toml",
+        },
+    )
+    with zipfile.ZipFile(zip_path) as zf:
+        names = set(zf.namelist())
+    assert "sources/accounts/a/account.toml" in names
+    assert "sources/accounts/b/account.toml" in names
+    assert "sources/account.toml" not in names

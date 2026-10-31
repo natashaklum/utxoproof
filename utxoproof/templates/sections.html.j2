@@ -277,7 +277,7 @@ Realised gains per year plus remaining lot inventory (cost basis only).</p>
 {% macro overview_section(o, intro) %}
 {{ intro_block("Portfolio overview", intro) }}
 <p>As of {{ o.as_of }} at {{ o.current_price_eur }} EUR/BTC ({{ o.price_note }}).
-Click an entity to drill into its UTXOs, then a UTXO for provenance.</p>
+Click an account to drill into its UTXOs, then a UTXO for provenance.</p>
 
 <div class="cards">
   <div class="card"><div class="big">{{ o.net_worth_eur }}</div><div class="sub">net worth (EUR)</div></div>
@@ -330,9 +330,9 @@ Click an entity to drill into its UTXOs, then a UTXO for provenance.</p>
   </div>
 </div>
 
-<h3>Entities</h3>
+<h3>Accounts</h3>
 <table>
-  <tr><th>Entity</th><th>Type</th><th>UTXOs</th><th>BTC</th><th>Value (EUR)</th><th>Share</th></tr>
+  <tr><th>Account</th><th>Type</th><th>UTXOs</th><th>BTC</th><th>Value (EUR)</th><th>Share</th></tr>
   {% for e in o.entities %}
   <tr><td><a href="{{ e.href }}">{{ e.label }}</a></td><td>{{ e.kind }}</td><td>{{ e.utxos }}</td><td>{{ e.btc }}</td><td>{{ e.value }}</td><td>{{ e.share }}</td></tr>
   {% endfor %}
@@ -351,19 +351,30 @@ Click an entity to drill into its UTXOs, then a UTXO for provenance.</p>
 {% macro entity_section(e, intro) %}
 {{ intro_block(e.label, intro) }}
 <p><a href="{{ e.back_href }}">← portfolio overview</a></p>
-<p>{{ e.kind }} — {{ e.detail }} Total value: {{ e.total_eur }} EUR.</p>
+<p>{{ e.kind }} — {{ e.detail }} Total value: {{ e.total_eur }} EUR.{% if e.holdings %} Broker holdings (informational): {{ e.info_value_eur }} EUR.{% endif %}</p>
 {% if e.review %}<p>Review: <a href="{{ e.review.href }}">{{ e.review.title }}</a></p>{% endif %}
 
 {% if e.utxos %}
 <h3>UTXOs (click for provenance)</h3>
 <p class="sub">Flags = what to do (recommendations). Tags = what it is (classification).</p>
 <table>
-  <tr><th>UTXO</th><th>Address</th><th>BTC</th><th>Value (EUR)</th><th>KYC</th><th>Coverage</th><th>What to do</th><th>What it is</th></tr>
+  <tr><th>UTXO</th><th>Label</th><th>Address</th><th>BTC</th><th>Value (EUR)</th><th>KYC</th><th>Coverage</th><th>What to do</th><th>What it is</th></tr>
   {% for u in e.utxos %}
-  <tr><td><a href="{{ u.href }}"><code>{{ u.id }}</code></a></td><td><code>{{ u.address }}</code></td><td>{{ u.btc }}</td><td>{{ u.value }}</td><td>{{ u.kyc }}</td><td><span class="tier tier-{{ u.coverage_tier }}">{{ u.coverage }}</span></td><td>{{ u.flags }}</td><td>{{ u.tags }}</td></tr>
+  <tr><td><a href="{{ u.href }}"><code>{{ u.id }}</code></a></td><td>{{ u.labels }}</td><td><code>{{ u.address }}</code></td><td>{{ u.btc }}</td><td>{{ u.value }}</td><td>{{ u.kyc }}</td><td><span class="tier tier-{{ u.coverage_tier }}">{{ u.coverage }}</span></td><td>{{ u.flags }}</td><td>{{ u.tags }}</td></tr>
   {% endfor %}
 </table>
 <div>{{ e.utxo_bars | safe }}</div>
+{% endif %}
+
+{% if e.holdings %}
+<h3>Broker holdings (informational)</h3>
+<p class="sub">Kept out of Bitcoin pooling and tax figures until Belgian stock rules are specified.</p>
+<table>
+  <tr><th>Symbol</th><th>Quantity</th><th>Value (EUR)</th></tr>
+  {% for h in e.holdings %}
+  <tr><td>{{ h.symbol }}</td><td>{{ h.quantity }}</td><td>{{ h.value }}</td></tr>
+  {% endfor %}
+</table>
 {% endif %}
 
 {% if e.fiat_rows %}

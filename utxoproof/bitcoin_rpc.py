@@ -80,8 +80,23 @@ class BitcoinRPC:
             result = result.get("descriptors", [])
         return list(result)
 
-    def list_transactions(self, wallet: str, count: int = 1000) -> list[dict[str, Any]]:
-        return list(self.wallet(wallet).call("listtransactions", "*", count))
+    def list_transactions(
+        self, wallet: str, count: int = 1000, skip: int = 0
+    ) -> list[dict[str, Any]]:
+        return list(self.wallet(wallet).call("listtransactions", "*", count, skip, True))
+
+    def list_all_transactions(self, wallet: str, page_size: int = 1000) -> list[dict[str, Any]]:
+        """Paginate listtransactions; include watch-only descriptors."""
+        if page_size < 1:
+            raise ValueError("page_size must be >= 1")
+        entries: list[dict[str, Any]] = []
+        skip = 0
+        while True:
+            page = self.list_transactions(wallet, page_size, skip)
+            entries.extend(page)
+            if len(page) < page_size:
+                return entries
+            skip += page_size
 
     def getbalances(self, wallet: str) -> dict[str, Any]:
         """Wallet balances split into mine/watchonly buckets (BTC floats)."""

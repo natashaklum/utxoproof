@@ -94,3 +94,37 @@ def test_rejects_garbage() -> None:
         derive_addresses(BIP84_ZPUB, 0, 0, 1, network="mainnet")
     with pytest.raises(ValueError):
         derive_addresses(BIP84_ZPUB, 2, 0, 1)
+
+
+def test_slip132_descriptor_is_converted_for_core() -> None:
+    from utxoproof.descriptors import descriptor_for_core, with_checksum
+
+    zpub = (
+        "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCTo"
+        "UG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs"
+    )
+    core = descriptor_for_core(f"wpkh({zpub}/<0;1>/*)")
+    assert "zpub" not in core
+    assert core.startswith("wpkh(xpub")
+    assert core.endswith("#" + core.rsplit("#", 1)[1])
+    # Re-checking an xpub descriptor is stable and keeps a valid checksum.
+    assert descriptor_for_core(core) == core
+    assert core == with_checksum(core.split("#")[0])
+
+
+def test_slip132_testnet_descriptor_uses_tpub() -> None:
+    from embit import bip32
+
+    from utxoproof.descriptors import descriptor_for_core
+
+    key = bip32.HDKey.from_seed(b"\x01" * 16).derive("m/84h/1h/0h")
+    vpub = key.to_public().to_base58()
+    # Embit writes xpub by default; force the SLIP-132 testnet version.
+    from embit import networks
+
+    parsed = bip32.HDKey.from_base58(vpub)
+    parsed.version = networks.NETWORKS["test"]["zpub"]
+    vpub = parsed.to_base58()
+    core = descriptor_for_core(f"wpkh([00000000/84h/1h/0h]{vpub}/<0;1>/*)")
+    assert "tpub" in core
+    assert "vpub" not in core

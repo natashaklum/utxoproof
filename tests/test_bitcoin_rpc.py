@@ -63,3 +63,24 @@ def test_wallet_endpoint() -> None:
 
     _client(handler).list_transactions("watch")
     assert seen[0].endswith("/wallet/watch")
+
+
+def test_list_all_transactions_paginates_and_includes_watchonly() -> None:
+    calls: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+
+        body = json.loads(request.content)
+        calls.append(body)
+        skip = body["params"][2]
+        page = [{"txid": f"tx{skip + index}"} for index in range(2 if skip == 0 else 1)]
+        return httpx.Response(200, json={"result": page, "error": None, "id": 1})
+
+    client = _client(handler)
+    entries = client.list_all_transactions("watch", page_size=2)
+    assert [entry["txid"] for entry in entries] == ["tx0", "tx1", "tx2"]
+    assert [call["params"] for call in calls] == [
+        ["*", 2, 0, True],
+        ["*", 2, 2, True],
+    ]

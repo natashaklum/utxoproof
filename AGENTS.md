@@ -9,7 +9,8 @@
 ## What this is
 
 utxoproof: Bitcoin wealth management + Belgian tax compliance for self-custodians.
-Full spec: `utxoproof-plan_v7.md` (§14 is the saga contract). Two repos:
+v8 account-centric input is the primary workflow; `utxoproof-plan_v7.md` remains
+the tax/saga spec (§14). Two repos:
 
 - This repo (`utxoproof`): the tool. Python 3.11+, `utxoproof/` package.
 - [`natashaklum/rp2`](https://github.com/natashaklum/rp2) fork: rp2 + Belgian `BE`
@@ -31,6 +32,8 @@ Full spec: `utxoproof-plan_v7.md` (§14 is the saga contract). Two repos:
 ```bash
 uv venv                                            # one-time
 VIRTUAL_ENV=.venv uv pip install -e ".[dev]"
+.venv/bin/utxoproof discover --input examples/input_v8
+.venv/bin/utxoproof run --input examples/input_v8 --data-dir /tmp/utxoproof-demo --offline
 .venv/bin/utxoproof compute --input tests/fixtures/manual_2023.csv --year 2023
 .venv/bin/utxoproof status --input tests/fixtures/manual_2023.csv --price 40000
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
@@ -46,16 +49,42 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
 ## Conventions
 
 - Money: `Decimal` only, never float. Tax math lives in `utxoproof/belgian_tax.py`.
-- Chain crypto (xpub parsing, address derivation) goes through `utxoproof/descriptors.py`
-  (embit); new vectors must be spec vectors, hand-verified before pinning.
-- Bitcoin Core access goes through `utxoproof/bitcoin_rpc.py` (httpx JSON-RPC) and
-  `utxoproof/onchain.py` (tx-graph sync). `setup --timestamp` defaults to `now`
-  (no rescan); `RESCAN_FROM=0` in `run.sh` rescans history for funded wallets.
-  Outputs carry `is_mine` (default ours; `getaddressinfo` proves external at
-  sync, incl. a backfill pass); totals/advisory/portfolio count only ours, and
-  `utxoproof reconcile` diffs the DB against node balances.
-  Daemon-backed tests are marked
-  `regtest` and skip without a node; CI `regtest` job starts one via docker.
+- One owner, many accounts. `input/utxoproof.toml` + `input/accounts/<id>/account.toml`
+  is the v8 source of truth (`utxoproof/accounts.py`); account kinds are
+  `wallet`, `bank`, `credit_card`, `exchange`, `broker`. All metadata and
+  type-specific files stay in the account folder; no central account list.
+  Generated DB/reports stay in `--data-dir`, never in `input/`.
+- Chain crypto (descriptor parsing, address/script derivation) goes through
+  `utxoproof/descriptors.py` (embit); new vectors must be spec vectors,
+  hand-verified before pinning. Exported descriptors (multisig included) are
+  canonical; xpub shorthand is accepted for single-sig. Ownership is per output:
+  `accounts.persist_registry` fills `account_scripts`, and
+  `tx_outputs.account_id` drives portfolio/advisory attribution. Address labels
+  never establish ownership. Overlapping scripts across accounts are hard errors.
+- Electrum is the primary chain backend: `utxoproof/electrum.py` (pure-Python
+  protocol) + `utxoproof/electrum_sync.py` (batched histories, raw-tx/header
+  fetch, gap extension, per-output attribution). Configure `[chain]` in
+  `utxoproof.toml` (`electrum_url`, optional `electrum_ca_file`).
+- Bitcoin Core remains optional: `utxoproof/bitcoin_rpc.py` + `utxoproof/onchain.py`
+  (descriptor import, paginated `listtransactions`, per-output `account_scripts`
+  attribution). `setup --timestamp` defaults to `now` (no rescan);
+  `RESCAN_FROM=0` in `run_legacy.sh` rescans history. `reconcile` diffs DB-owned
+  unspent outputs against Electrum (`reconcile --input`) or Core balances.
+  Daemon-backed tests are marked `regtest` and skip without a node; CI `regtest`
+  job starts one via docker.
+- BIP329 labels are first-class `labels` rows (`utxoproof/labels.py`), scoped by
+  account, with source file/line and `origin` (`bip329`/`user`). Import replaces
+  imported labels only; user labels survive. `utxoproof label` sets/deletes
+  user labels. Labels are display metadata, never tags or ownership proofs;
+  account and provenance pages show them.
+- Workflow: `utxoproof discover --input <tree> [--json] [--online]` validates
+  manifests/descriptors/collisions/parsers/backend without writing input;
+  `utxoproof run --input <tree> --data-dir <data> [--plan] [--only ...] [--year Y] [--offline]`
+  runs registry+labels+sync/imports+reports+portfolio. Low-level
+  commands remain for diagnosis (`portfolio --input`, `reconcile --input`,
+  `setup`/`sync`). `examples/run.sh` is a thin v8 wrapper; the old self-contained
+  v7 script is `examples/run_legacy.sh` and owns `MODE=prepare/refresh/clean`,
+  `WALLETS`, `BANK_CSV` and fixture tests.
 - KYC lives in `utxoproof/kyc.py` (proportional propagation, mixing detection);
   `utxoproof privacy` renders it. Shared sample graph: `create_sample_graph()`.
 - Advisory lives in `utxoproof/advisory.py` (Sec. 13 flag rules, estate score);
@@ -80,40 +109,42 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   `parse_kraken_fiat_flows` supplies EUR deposits/withdrawals (the BTC parser
   intentionally drops them).
 - Evidence lives in `utxoproof/evidence.py` (SHA-256 manifest, content dedupe,
-  ZIP bundle). `utxoproof report --year Y [--source F]...` builds it unless
-  `--no-zip`; `report --alltime` writes the per-year summary (no ZIP).
+  ZIP bundle). `utxoproof run` builds the year ZIP from account-folder sources
+  (root `utxoproof.toml` is excluded: it may hold RPC credentials) unless
+  `--no-zip`; `utxoproof report --year Y [--source F]...` builds one too.
+  `report --alltime` writes the per-year summary (no ZIP).
   Human artifacts go through `utxoproof attach` into `evidence/<year>/`
   (hash + tx link in `evidence_links`); provenance appends them with
   thumbnails for small images, links otherwise.
 - One data dir: `utxoproof/paths.py` (`--data-dir` > `$UTXOPROOF_DATA_DIR` >
   `~/.utxoproof`); `--db`/`--evidence-dir` override per call.
-- Runnable workflows live in `examples/` (single self-contained `run.sh`,
-  `MODE=prepare` stops on shortfalls unless `ALLOW_SHORTFALLS=1`,
-  `MODE=refresh` idempotent, `MODE=clean` lists generated artifacts and
-  deletes only with `CONFIRM=1`, `TAX_YEAR` empty covers every data year,
-  incl. `setup`/`sync`/`portfolio` on-chain stages); covered by
-  `tests/test_run_scripts.py` driving it against fixtures.
-- Entities for the overview come from a TOML file (`examples/entities.example.toml`;
-  `load_entities` + `portfolio_from_db` in `utxoproof/portfolio.py`, surfaced via
-  `utxoproof portfolio` and `report --full --entities`); each unspent output
-  lands in the entity whose `wallet` matches one of its `wallet_label`
-  attributions (sync stamps every wallet that lists the tx; legacy unlabeled
-  rows use the old single-owner rule; unmapped wallets raise). `[[fiat]]`
-  carries optional `as_of`/`statements`, audited by `utxoproof fiat-check`
-  (freshness + evidence, warn-only `run.sh` stage); `WALLETS="name:fp:xpub|…"`
-  loops setup/sync/reconcile, legacy XPUB vars synthesize one entry.
+- v8 examples live in `examples/input_v8/`; `tests/test_runner.py` covers
+  discovery/plan/offline run and `tests/test_run_wrapper.py` covers the thin
+  `run.sh`. Legacy `run_legacy.sh` is covered by `tests/test_run_scripts.py`
+  (`MODE=prepare` stops on shortfalls unless `ALLOW_SHORTFALLS=1`,
+  `MODE=refresh` idempotent, `MODE=clean` lists generated artifacts and deletes
+  only with `CONFIRM=1`; `WALLETS`, `BANK_CSV` and fixture end-to-end runs).
+- Legacy entities remain only for low-level compatibility:
+  `examples/entities.example.toml`, `load_entities` + `portfolio_from_db`,
+  `utxoproof portfolio --entities` and `report --full --entities`. New installs
+  use account folders; `Entity` is a transitional Python alias. Each unspent
+  output lands in the account whose attribution matches; unmapped legacy wallets
+  still raise. `[[fiat]]` carries optional `as_of`/`statements`, audited by
+  `utxoproof fiat-check`.
 - `utxoproof/linking.py` keeps the legacy withdrawal→chain matcher and
   `funding_trail()` (exact sats + date window first, fee-skew second with ~Δ
   labels; ambiguous/unmatched reported, never guessed). The saga supersedes it
   as the primary provenance evidence; the funding trail remains the candidate
   fiat prologue. Depth/node truncation is rendered as a note, never silent.
-- Dashboard lives in `utxoproof/portfolio.py` (entities, rollups, inline SVG
-  charts — no JavaScript). Overview -> entity pages -> provenance pages;
+- Dashboard lives in `utxoproof/portfolio.py` (account rollups, inline SVG
+  charts — no JavaScript). Overview -> account pages -> provenance pages;
   chart HTML is trusted generator output (`| safe` in templates, everything
   else stays autoescaped). KYC colors are fixed per status (canonical order);
-  entity bars use dominant-KYC color. Tag model in `utxoproof/tags.py`
-  (behavior/channel axes + user tags from entities.toml); donuts take explicit
-  palettes, one donut per exclusive axis; bank page has a matched/unmatched donut.
+  account bars use dominant-KYC color. Tag model in `utxoproof/tags.py`
+  (behavior/channel axes + tags from account manifests/legacy entities); donuts
+  take explicit palettes, one donut per exclusive axis; bank page has a
+  matched/unmatched donut. Credit-card balances are negative liabilities;
+  broker holdings render as informational only.
 - Price history: `utxoproof/data/btc_eur_daily.csv` (2010-08-18 first real print ->
   now; Kraken native, blockchain.info x ECB before) and
   `utxoproof/data/usd_eur_daily.csv` (ECB 1999 -> now), plus raw upstream
@@ -142,16 +173,19 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   (`kbc-bankaccount`, `kbc-creditcard`; `kbc` kept as alias): card exports get
   their own profile (split credit/debit, merchant iso IBAN, settlement date),
   card numbers/holders never ingested, non-EUR rows without a rate abort. Bank rows are evidence, never
-  pool input; `run.sh` converts via `BANK_CSV`/`BANK_TYPE` into bank-rows.csv +
-  report `--source`; demo bank page + `kbc-checking` entity via `write_bank_page`.
+  pool input; v8 `run` auto-discovers statements and writes bank-rows.csv;
+  legacy `run_legacy.sh` converts via `BANK_CSV`/`BANK_TYPE`; both render the
+  bank review page via `write_bank_page`. Canonical rows carry `account_id`.
   All non-Kraken shapes are best-effort fixtures for later correction.
 - Deposits enter the moving-average pool at stated or receipt-date price
   (`--price-history` CSV, else a loud error — never silent zero).
   `utxoproof check` diagnoses pool coverage without crashing.
 - Regtest stack: `docker-compose.regtest.yml` (bitcoind only; no docker on dev
   boxes, so daemon runs are CI-only).
-- SQLite schema (`utxoproof/schema.sql`) is created whole (Sec. 8); schema changes
-  need a migration note + `tests/test_schema.py` update.
+- SQLite schema (`utxoproof/schema.sql`) is created whole (Sec. 8) plus v8
+  `accounts`, `account_scripts`, `labels`, `tx_outputs.account_id/script_hex`;
+  schema changes need a migration note + `tests/test_schema.py` update.
+  Rebuild v7 DBs from input; evidence files stay.
 - `tests/fixtures/*.csv` are hand-verified: recompute expected values
   independently before pinning them in tests.
 - `S101` (asserts) is ignored for `tests/**` in `pyproject.toml`; everything else

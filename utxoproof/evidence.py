@@ -153,6 +153,7 @@ def produce_evidence_zip(
     output_dir: str | Path,
     timestamp: str | None = None,
     attachments: list[Path] | None = None,
+    arcnames: dict[str, str] | None = None,
 ) -> Path:
     """Build ``utxoproof_evidence_<year>_<timestamp>.zip``. Returns its path."""
     stamp = timestamp or datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -168,6 +169,23 @@ def produce_evidence_zip(
         "files": manifest_files,
     }
 
+    used_arcnames: set[str] = {"report.html", "evidence.db", "manifest.json"}
+
+    def add_file(zf: zipfile.ZipFile, file: str | Path, arc_dir: str, role: str) -> None:
+        name = Path(file).name
+        custom = (arcnames or {}).get(str(Path(file).resolve()))
+        arcname = f"{arc_dir}/{custom}" if custom else f"{arc_dir}/{name}"
+        if arcname in used_arcnames:
+            stem = Path(file).stem
+            suffix = Path(file).suffix
+            counter = 1
+            while arcname in used_arcnames:
+                arcname = f"{arc_dir}/{stem}-{counter}{suffix}"
+                counter += 1
+        used_arcnames.add(arcname)
+        zf.write(file, arcname=arcname)
+        manifest_files.append({"path": arcname, "sha256": sha256_file(file), "role": role})
+
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for role, arc_dir, paths in (
             ("source", "sources", sources),
@@ -175,9 +193,7 @@ def produce_evidence_zip(
             ("attachment", "attachments", attachments or []),
         ):
             for file in paths:
-                arcname = f"{arc_dir}/{Path(file).name}"
-                zf.write(file, arcname=arcname)
-                manifest_files.append({"path": arcname, "sha256": sha256_file(file), "role": role})
+                add_file(zf, file, arc_dir, role)
         zf.write(report_html_path, arcname="report.html")
         manifest_files.append(
             {

@@ -1,0 +1,6 @@
+kind = "exchange"
+label = "Kraken"
+exchange = "kraken"
+ledgers = "ledgers.csv"
+trades = "trades.csv"
+tags = ["exchange"]

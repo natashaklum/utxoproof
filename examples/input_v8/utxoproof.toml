@@ -1,0 +1,11 @@
+[owner]
+name = "Demo owner"
+
+[chain]
+backend = "electrum"
+network = "mainnet"
+electrum_url = "ssl://127.0.0.1:50002"
+electrum_ca_file = ""
+
+[reporting]
+tax_year = "2023"

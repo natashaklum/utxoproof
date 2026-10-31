@@ -2,6 +2,7 @@
 {% from "sections.html.j2" import provenance_section %}
 {% block title %}utxoproof provenance {{ provenance.txid }}:{{ provenance.vout }}{% endblock %}
 {% block content %}
-<h1>UTXO provenance <code>{{ provenance.txid }}:{{ provenance.vout }}</code></h1>
+<h1>UTXO provenance <code>{{ provenance.txid }}:{{ provenance.vout }}</code>{% if provenance.labels %} — {{ provenance.labels }}{% endif %}</h1>
+{% if provenance.address_label %}<p class="sub">Address label: {{ provenance.address_label }}</p>{% endif %}
 {{ provenance_section(provenance, intro) }}
 {% endblock %}

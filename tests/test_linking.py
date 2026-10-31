@@ -298,3 +298,39 @@ def test_funding_outside_tolerance_stays_unmatched() -> None:
     result = match_funding([w], [("far-tx", datetime.date(2023, 5, 2), 99_000_000)])
     assert result.matches == {}
     assert result.unmatched == ["QW (1 BTC on 2023-05-02)"]
+
+
+def test_provenance_shows_output_and_transaction_labels(tmp_path) -> None:
+    from utxoproof.kyc import create_sample_graph
+    from utxoproof.reports import build_provenance_context, write_provenance_page
+
+    db = create_sample_graph()
+    db.execute(
+        "INSERT INTO labels (account_id,type,ref,label,origin,updated_at) "
+        "VALUES ('wallet-a','output','D:0','Retirement UTXO','user','2024-01-01')"
+    )
+    db.execute(
+        "INSERT INTO labels (account_id,type,ref,label,origin,updated_at) "
+        "VALUES ('wallet-a','tx','D','Consolidation','user','2024-01-01')"
+    )
+    db.commit()
+    ctx = build_provenance_context(
+        db,
+        "D",
+        0,
+        lambda _d: Decimal("20000"),
+        Decimal("40000"),
+        datetime.date(2024, 6, 1),
+    )
+    assert ctx["labels"] == "Retirement UTXO · Consolidation"
+    target = write_provenance_page(
+        db,
+        "D",
+        0,
+        lambda _d: Decimal("20000"),
+        Decimal("40000"),
+        datetime.date(2024, 6, 1),
+        tmp_path,
+    )
+    html = target.read_text(encoding="utf-8")
+    assert "Retirement UTXO" in html and "Consolidation" in html

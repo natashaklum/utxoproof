@@ -1,0 +1,9 @@
+kind = "bank"
+label = "KBC checking"
+profile = "kbc-bankaccount"
+currency = "EUR"
+tags = ["fiat"]
+[[balances]]
+amount_eur = "12500.00"
+as_of = "2023-12-31"
+note = "Closing balance"

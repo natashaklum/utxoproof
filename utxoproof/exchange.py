@@ -47,6 +47,7 @@ class ExchangeTx:
     wallet: str = ""
     subclass: str = ""
     trade_refs: tuple[str, ...] = ()
+    account_id: str = ""  # plan-v8 account folder attribution
 
     @property
     def fiat_amount(self) -> Decimal:
@@ -54,7 +55,9 @@ class ExchangeTx:
         return abs(self.btc * self.eur_per_btc)
 
 
-def to_manual_csv_rows(txs: list[ExchangeTx]) -> list[dict[str, str]]:
+def to_manual_csv_rows(
+    txs: list[ExchangeTx], include_account: bool = False
+) -> list[dict[str, str]]:
     """Convert trade records to manual-CSV rows consumable by ``compute``.
 
     BUY/SELL pass through; MARGIN settles like a SELL (taxable disposal);
@@ -81,15 +84,16 @@ def to_manual_csv_rows(txs: list[ExchangeTx]) -> list[dict[str, str]]:
             side, btc = tx.kind, tx.btc
         else:
             continue
-        rows.append(
-            {
-                "date": tx.date.isoformat(),
-                "side": side,
-                "kind": tx.kind,
-                "trade_refs": ";".join(tx.trade_refs),
-                "btc": str(btc),
-                "eur_per_btc": str(tx.eur_per_btc),
-                "fee_eur": str(tx.fee_eur),
-            }
-        )
+        row = {
+            "date": tx.date.isoformat(),
+            "side": side,
+            "kind": tx.kind,
+            "trade_refs": ";".join(tx.trade_refs),
+            "btc": str(btc),
+            "eur_per_btc": str(tx.eur_per_btc),
+            "fee_eur": str(tx.fee_eur),
+        }
+        if include_account:
+            row["account_id"] = tx.account_id
+        rows.append(row)
     return rows

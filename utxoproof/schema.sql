@@ -29,9 +29,11 @@ CREATE TABLE IF NOT EXISTS tx_outputs (
                                          -- mining|self_transfer|received|unknown
     source_label    TEXT,
     source_evidence TEXT,
-    -- Wallet
+    -- Wallet / account attribution
     wallet_label    TEXT,
     descriptor      TEXT,
+    account_id      TEXT,                -- owning account (plan v8; NULL = legacy)
+    script_hex      TEXT,                -- scriptPubKey hex for exact attribution
     -- Spend tracking
     spent_by_txid   TEXT,                -- NULL = currently unspent
     spent_by_input  INTEGER,
@@ -51,6 +53,50 @@ CREATE TABLE IF NOT EXISTS tx_inputs (
     prev_vout       INTEGER NOT NULL,
     PRIMARY KEY (txid, input_index)
 );
+
+-- ── Accounts and script registry (plan v8) ─────────────────────────
+-- Mirror of input/accounts/<folder>/account.toml for querying. The input tree
+-- is the source of truth; `utxoproof run` rebuilds this cache from it.
+
+CREATE TABLE IF NOT EXISTS accounts (
+    id          TEXT PRIMARY KEY,
+    kind        TEXT NOT NULL,           -- wallet|bank|credit_card|exchange|broker
+    label       TEXT NOT NULL,
+    detail      TEXT NOT NULL DEFAULT '',
+    network     TEXT NOT NULL DEFAULT 'mainnet',
+    tags        TEXT NOT NULL DEFAULT '', -- comma-separated
+    source_path TEXT NOT NULL DEFAULT ''
+);
+
+-- Every derived receive/change script; one script belongs to exactly one
+-- account. Electrum sync uses these as its scripthash watch set.
+CREATE TABLE IF NOT EXISTS account_scripts (
+    account_id    TEXT NOT NULL,
+    chain         INTEGER NOT NULL,       -- 0 external, 1 change
+    derivation_index INTEGER NOT NULL,
+    address       TEXT NOT NULL,
+    script_hex    TEXT NOT NULL,
+    PRIMARY KEY (account_id, chain, derivation_index),
+    UNIQUE (script_hex),
+    UNIQUE (address)
+);
+
+-- BIP329 + user labels. Labels are assertions, not ownership or tags.
+CREATE TABLE IF NOT EXISTS labels (
+    id          INTEGER PRIMARY KEY,
+    account_id  TEXT NOT NULL,
+    type        TEXT NOT NULL,           -- tx|addr|output|input|<preserved unknown>
+    ref         TEXT NOT NULL,
+    label       TEXT NOT NULL,
+    spendable   INTEGER,
+    origin      TEXT NOT NULL DEFAULT 'bip329', -- bip329|user
+    source_file TEXT NOT NULL DEFAULT '',
+    source_line INTEGER,
+    updated_at  TEXT NOT NULL,
+    UNIQUE (account_id, type, ref)
+);
+
+CREATE INDEX IF NOT EXISTS idx_labels_ref ON labels(type, ref);
 
 -- ── Price cache ────────────────────────────────────────────────────
 

@@ -1,0 +1,9 @@
+kind = "credit_card"
+label = "KBC Visa"
+profile = "kbc-creditcard"
+currency = "EUR"
+tags = ["liability"]
+[[balances]]
+amount_eur = "-420.00"
+as_of = "2023-12-31"
+note = "Card balance owed"

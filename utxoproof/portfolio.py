@@ -22,14 +22,20 @@ from utxoproof.advisory import UTXOAdvisory
 
 
 @dataclass
-class Entity:
+class Account:
     id: str
-    kind: str  # wallet | bank | exchange
+    kind: str  # wallet | bank | credit_card | exchange | broker
     label: str
     detail: str = ""
     wallet: str = ""  # synced on-chain wallet whose UTXOs belong here
     tags: tuple[str, ...] = ()  # user-asserted tags inherited by member holdings
-    statements: tuple[str, ...] = ()  # bank statement files evidencing this entity
+    statements: tuple[str, ...] = ()  # bank statement files evidencing this account
+    holdings: tuple[tuple[str, Decimal, Decimal], ...] = ()  # broker: symbol, qty, value
+
+
+# Transitional alias for call sites/templates that still say "entity". New
+# code, UI copy and docs use Account; the on-disk model has one owner only.
+Entity = Account
 
 
 @dataclass
@@ -47,6 +53,7 @@ class UtxoHolding:
     channel: str = ""  # exclusive funding-channel bucket (see utxoproof.tags)
     coverage_share: Decimal = Decimal("0")  # bank-proven fraction, candidates excluded
     coverage_tier: str = ""  # weakest tier on the best bank path
+    labels: tuple[str, ...] = ()  # BIP329/user labels (display only)
 
 
 @dataclass
@@ -109,6 +116,10 @@ class Portfolio:
         if total == 0:
             return Decimal("0")
         return self.coverage_value_eur / total
+
+    @property
+    def accounts(self) -> list[Entity]:
+        return self.entities
 
     def entity_value_eur(self, entity_id: str) -> Decimal:
         utxo_value = sum(
@@ -354,6 +365,8 @@ def portfolio_from_db(
     current_price_eur: Decimal,
     as_of: datetime.date,
     utxo_tags: dict[str, tuple[str, ...]] | None = None,
+    labels: dict[str, str] | None = None,
+    address_labels: dict[str, str] | None = None,
 ) -> tuple[Portfolio, list[UTXOAdvisory]]:
     """Build a ``Portfolio`` from a synced on-chain DB plus entity config.
 
@@ -377,6 +390,8 @@ def portfolio_from_db(
     by_entity = {e.id: e for e in entities}
     by_wallet = {e.wallet: e.id for e in entities if e.wallet}
     utxo_tags = utxo_tags or {}
+    labels = labels or {}
+    address_labels = address_labels or {}
 
     def _legacy_owner() -> str:
         named = [e for e in entities if e.wallet == wallet]
@@ -388,21 +403,35 @@ def portfolio_from_db(
         return defaulted[0].id if defaulted else entities[0].id
 
     def _owner_for(a: UTXOAdvisory) -> str:
-        labels = [w for w in (a.wallet_label or "").split(",") if w]
-        if not labels:
+        if a.account_id:
+            if a.account_id not in by_entity:
+                raise ValueError(
+                    f"account {a.account_id!r} on {a.txid}:{a.vout} is not in the input tree"
+                )
+            return a.account_id
+        wallet_labels = [w for w in (a.wallet_label or "").split(",") if w]
+        if not wallet_labels:
             return _legacy_owner()  # pre-attribution DBs behave exactly as before
-        candidates = sorted({by_wallet[w] for w in labels if w in by_wallet})
+        candidates = sorted({by_wallet[w] for w in wallet_labels if w in by_wallet})
         if candidates:
             return candidates[0]  # deterministic on shared (self-transfer) outputs
         raise ValueError(
-            f"wallet(s) {labels} on {a.txid}:{a.vout} match no [[entities]] wallet=; "
-            "add an entry (id/kind/label/wallet) to the entities file"
+            f"wallet(s) {wallet_labels} on {a.txid}:{a.vout} match no account; "
+            "add the wallet under input/accounts/ or remove the stale DB"
         )
 
     def _holding(a: UTXOAdvisory) -> UtxoHolding:
         owner = _owner_for(a)
         user = (*by_entity[owner].tags, *utxo_tags.get(f"{a.txid}:{a.vout}", ()))
         asserted = next((t for t in user if t in CHANNEL_ORDER), "")
+        output_labels: list[str] = []
+        for text in (
+            labels.get(f"{a.txid}:{a.vout}"),
+            labels.get(f"{a.txid}:*"),
+            address_labels.get(a.address),
+        ):
+            if text and text not in output_labels:
+                output_labels.append(text)
         return UtxoHolding(
             owner,
             a.txid,
@@ -415,6 +444,7 @@ def portfolio_from_db(
             tags_for(a, a.source_type, user),
             behavior_bucket(a.holding_days, a.speculation_tainted),
             channel_of(a.source_type, asserted),
+            labels=tuple(output_labels),
         )
 
     utxos = [_holding(a) for a in advisories]

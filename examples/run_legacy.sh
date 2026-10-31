@@ -1,0 +1,514 @@
+#!/usr/bin/env bash
+# Legacy v7 self-contained pipeline: import -> check -> compute ->
+# setup -> sync -> report -> status (+ alltime) -> portfolio -> bank.
+# New installs should use the thin examples/run.sh + `utxoproof run` instead.
+#
+# Pages render leaf-up so menus and hub links resolve: tax/status/alltime first,
+# then portfolio (links them), then bank last (links everything incl. provenance).
+#
+# Three modes:
+#   MODE=prepare   (default)   — stops if check reports shortfalls
+#   MODE=refresh   — idempotent rerun; shortfalls print but do not stop
+#   MODE=clean     — dry-run list of generated artifacts; CONFIRM=1 deletes
+#
+# All settings are environment variables with sane defaults; copy this file
+# next to your data dir and edit the variables, or override any from the
+# environment (e.g. DATA_DIR, KRAKEN_LEDGERS, TAX_YEAR, BTC_PRICE, XPUB,
+# FINGERPRINT, RPC_URL, etc.).
+#
+#   cp examples/run_legacy.sh ~/utxoproof-data/run_legacy.sh
+#   $EDITOR ~/utxoproof-data/run_legacy.sh     # set your paths/flags
+#   bash ~/utxoproof-data/run_legacy.sh        # prepare mode, every year in the file
+#   TAX_YEAR=2023 bash ~/utxoproof-data/run_legacy.sh   # one filing year only
+#   MODE=refresh bash ~/utxoproof-data/run_legacy.sh    # idempotent rerun
+#   MODE=clean bash ~/utxoproof-data/run_legacy.sh      # dry run, then CONFIRM=1
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Variables (edit these or export overrides)
+# ---------------------------------------------------------------------------
+: "${DATA_DIR:=$HOME/utxoproof-data}"
+: "${KRAKEN_LEDGERS:=$HOME/exports/kraken_ledgers.csv}"
+: "${KRAKEN_TRADES:=}"            # empty skips trades join
+: "${BANK_CSV:=}"                 # "type:path|type:path" specs, e.g. "kbc:~/exports/kbc.csv|ing:~/exports/ing.csv"; empty skips bank review
+: "${BANK_TYPE:=kbc}"             # ing | kbc (=kbc-bankaccount) | kbc-creditcard | bnp | belfius | argenta
+: "${TAX_YEAR:=}"                 # empty = every year present in manual.csv
+: "${BTC_PRICE:=}"                # empty = bundled history close for status
+: "${CONFIG_FILE:=}"              # e.g. "$DATA_DIR/utxoproof.toml"
+: "${XPUB:=}"                     # account xpub/ypub/zpub; empty skips on-chain stages
+: "${FINGERPRINT:=}"             # master fingerprint, 8 hex; paired with XPUB
+: "${WALLETS:=}"                  # pipe-separated name:fp:xpub, e.g. "cold:ABCD:xpub…|hot:EF12:ypub…"
+: "${WALLET:=utxoproof_watchonly}"  # legacy single-wallet name (used when WALLETS is empty)
+: "${RPC_URL:=http://127.0.0.1:8332}"  # bitcoind RPC URL
+: "${RPC_USER:=}"
+: "${RPC_PASSWORD:=}"
+: "${PURPOSE:=84}"               # BIP44 purpose
+: "${COIN:=0}"                    # BIP44 coin
+: "${ACCOUNT:=0}"                 # BIP44 account
+: "${ENTITIES_FILE:=}"            # path to entities TOML; empty skips portfolio
+: "${MODE:=prepare}"             # prepare | refresh | clean
+: "${CONFIRM:=}"                  # MODE=clean only: 1 deletes; empty is a dry run
+: "${ALLOW_SHORTFALLS:=}"         # non-empty: prepare proceeds despite shortfalls (loud warning)
+: "${DEBUG:=}"                    # non-empty prints each on-chain command (password redacted)
+: "${RESCAN_FROM:=now}"           # setup rescan: 'now' (fast) or unix time / 0 for full
+
+UTXOPROOF_BIN="${UTXOPROOF_BIN:-utxoproof}"
+
+log() { printf '==> %s\n' "$*"; }
+fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+# Debug helper: prints the effective on-chain target. Password is never logged.
+dbg_rpc() {
+    if [ -n "$DEBUG" ]; then
+        log "debug: rpc_url=$RPC_URL rpc_user=${RPC_USER:-<none>} wallet=${W:-$WALLET} bin=$UTXOPROOF_BIN"
+    fi
+}
+
+# Wallet entries, one `name:fp:xpub` per line on stdout. Legacy XPUB/FINGERPRINT/
+# WALLET synthesize a single entry when WALLETS is empty; both empty skips
+# on-chain stages. Prints nothing and returns 1 when unconfigured.
+wallet_entries() {
+    if [ -n "$WALLETS" ]; then
+        (
+            IFS='|'
+            set -f
+            # shellcheck disable=SC2086
+            for entry in $WALLETS; do
+                [ -n "$entry" ] || continue
+                printf '%s\n' "$entry"
+            done
+        )
+    elif [ -n "$XPUB" ] && [ -n "$FINGERPRINT" ]; then
+        printf '%s\n' "$WALLET:$FINGERPRINT:$XPUB"
+    else
+        return 1
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Stage: import (same for both modes)
+# ---------------------------------------------------------------------------
+stage_import() {
+    log "import: kraken ledgers -> manual CSV"
+    [ -f "$KRAKEN_LEDGERS" ] || fail "ledgers file not found: $KRAKEN_LEDGERS"
+    mkdir -p "$DATA_DIR"
+    if [ -n "$KRAKEN_TRADES" ]; then
+        [ -f "$KRAKEN_TRADES" ] || fail "trades file not found: $KRAKEN_TRADES"
+        "$UTXOPROOF_BIN" import --file "$KRAKEN_LEDGERS" --type kraken \
+            --trades "$KRAKEN_TRADES" --out "$DATA_DIR/manual.csv"
+    else
+        "$UTXOPROOF_BIN" import --file "$KRAKEN_LEDGERS" --type kraken \
+            --out "$DATA_DIR/manual.csv"
+    fi
+    log "import done: $DATA_DIR/manual.csv"
+}
+
+# ---------------------------------------------------------------------------
+# Bank statements: BANK_CSV holds `|`-separated `type:path` specs (bare paths
+# use BANK_TYPE). Spaces survive (split on `|` only); colons stay reserved as
+# the type separator. The list file below is the single handoff: every
+# consumer reads specs line by line, so paths are never re-split.
+# ---------------------------------------------------------------------------
+write_bank_list() {
+    # Writes "$DATA_DIR/bank-list.txt", one spec per line. Returns 1 when empty.
+    : > "$DATA_DIR/bank-list.txt"
+    (
+        IFS='|'
+        set -f
+        # shellcheck disable=SC2086
+        for spec in $BANK_CSV; do
+            [ -n "$spec" ] || continue
+            case "$spec" in
+                *:*)
+                    printf '%s\n' "$spec"
+                    ;;
+                *)
+                    printf '%s\n' "$BANK_TYPE:$spec"
+                    ;;
+            esac
+        done >> "$DATA_DIR/bank-list.txt"
+    )
+    [ -s "$DATA_DIR/bank-list.txt" ]
+}
+
+# ---------------------------------------------------------------------------
+# Stage: fiat balance audit (freshness + statement evidence, never halts)
+# ---------------------------------------------------------------------------
+stage_fiat() {
+    log "fiat: audit hand-asserted balances"
+    if [ -n "$ENTITIES_FILE" ]; then
+        [ -f "$ENTITIES_FILE" ] || {
+            log "warning: entities file not found: $ENTITIES_FILE"
+            return 0
+        }
+        "$UTXOPROOF_BIN" fiat-check --entities "$ENTITIES_FILE" || true
+    else
+        log "note: fiat check skipped (set ENTITIES_FILE to enable)"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Stage: bank statement review page (fiat-leg matches, never pool input)
+# ---------------------------------------------------------------------------
+stage_bank() {
+    log "bank: statement review page"
+    if [ -z "$BANK_CSV" ]; then
+        log "note: bank review skipped (set BANK_CSV to enable)"
+        return 0
+    fi
+    write_bank_list || {
+        log "note: bank review skipped (no parseable BANK_CSV specs)"
+        return 0
+    }
+    n=0
+    first=1
+    while IFS= read -r spec || [ -n "$spec" ]; do
+        [ -n "$spec" ] || continue
+        case "$spec" in
+            *:*)
+                t=${spec%%:*}
+                f=${spec#*:}
+                ;;
+            *)
+                # Unreachable via write_bank_list (it normalizes), kept for
+                # hand-written list files read here in tests and by hand.
+                t=$BANK_TYPE
+                f=$spec
+                ;;
+        esac
+        [ -f "$f" ] || fail "bank statement not found: $f"
+        n=$((n + 1))
+        part="$DATA_DIR/bank-rows-$n.csv"
+        "$UTXOPROOF_BIN" import --file "$f" --type "$t" --out "$part"
+        if [ "$first" -eq 1 ]; then
+            cp "$part" "$DATA_DIR/bank-rows.csv"
+            first=0
+        else
+            tail -n +2 "$part" >> "$DATA_DIR/bank-rows.csv"
+        fi
+        rm -f "$part"
+    done < "$DATA_DIR/bank-list.txt"
+    if [ "$n" -eq 0 ]; then
+        log "note: bank review skipped (no parseable BANK_CSV specs)"
+        return 0
+    fi
+    if bank_out=$("$UTXOPROOF_BIN" bank --bank-list "$DATA_DIR/bank-list.txt" \
+        --manual "$DATA_DIR/manual.csv" --db "$DATA_DIR/utxoproof.db" \
+        --ledgers "$KRAKEN_LEDGERS" \
+        ${KRAKEN_TRADES:+--trades "$KRAKEN_TRADES"} \
+        --provenance-dir "$DATA_DIR/portfolio/provenance" \
+        --out "$DATA_DIR/bank" --site-root "$DATA_DIR" 2>&1); then
+        printf '%s\n' "$bank_out"
+    else
+        log "warning: bank review skipped (see output above)"
+        printf '%s\n' "$bank_out"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Stage: bank-list file (one spec per line; spaces safe, colons reserved).
+# Runs right after import so every later stage can reference it.
+# ---------------------------------------------------------------------------
+stage_bank_list() {
+    if [ -z "$BANK_CSV" ]; then
+        return 0
+    fi
+    write_bank_list || fail "no parseable BANK_CSV specs"
+    log "bank list: $(wc -l < "$DATA_DIR/bank-list.txt") statement(s)"
+}
+
+# ---------------------------------------------------------------------------
+# Stage: check pool coverage
+# ---------------------------------------------------------------------------
+stage_check() {
+    log "check: pool coverage (never crashes, shortfalls named)"
+    out=$("$UTXOPROOF_BIN" check --input "$DATA_DIR/manual.csv" 2>&1) || true
+    printf '%s\n' "$out"
+    printf '%s\n' "$out" | tail -n 1
+}
+
+# ---------------------------------------------------------------------------
+# Stage: compute
+# ---------------------------------------------------------------------------
+tax_years() {
+    # Distinct years from manual.csv's ISO date column (always first).
+    awk -F, 'NR>1 && $1 ~ /^[0-9][0-9][0-9][0-9]-/ {print substr($1, 1, 4)}' \
+        "$DATA_DIR/manual.csv" | sort -nu
+}
+
+stage_compute() {
+    if [ -n "$TAX_YEAR" ]; then
+        log "compute: year $TAX_YEAR"
+        "$UTXOPROOF_BIN" compute --input "$DATA_DIR/manual.csv" --year "$TAX_YEAR"
+    else
+        log "compute: every year in manual.csv"
+        "$UTXOPROOF_BIN" compute --input "$DATA_DIR/manual.csv" --all-years
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Stage: setup on-chain wallets (one `name:fp:xpub` entry each)
+# ---------------------------------------------------------------------------
+stage_setup() {
+    log "setup: initialize on-chain wallets from xpubs"
+    entries=$(wallet_entries) || {
+        log "note: setup skipped (set WALLETS or XPUB+FINGERPRINT to enable on-chain stages)"
+        return 0
+    }
+    while IFS= read -r entry || [ -n "$entry" ]; do
+        case "$entry" in
+            "" ) continue ;;
+            *:*:*) ;;
+            *) fail "bad WALLETS entry '$entry' (expected name:fp:xpub)" ;;
+        esac
+        W=${entry%%:*}; rest=${entry#*:}; FP=${rest%%:*}; X=${rest#*:}
+        [ -n "$W" ] && [ -n "$FP" ] && [ -n "$X" ] \
+            || fail "bad WALLETS entry '$W' (expected name:fp:xpub)"
+        log "setup: wallet $W via $RPC_URL (user ${RPC_USER:-<none>})"
+        dbg_rpc
+        if setup_out=$("$UTXOPROOF_BIN" setup \
+            --rpc-url "$RPC_URL" --rpc-user "$RPC_USER" \
+            --rpc-password "$RPC_PASSWORD" \
+            --xpub "$X" --fingerprint "$FP" \
+            --wallet "$W" \
+            --purpose "$PURPOSE" --coin "$COIN" --account "$ACCOUNT" \
+            --timestamp "$RESCAN_FROM" 2>&1); then
+            printf '%s\n' "$setup_out"
+        else
+            log "warning: setup skipped for $W (node unreachable or RPC error)"
+            printf '%s\n' "$setup_out"
+        fi
+    done <<EOF
+$entries
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# Stage: sync on-chain
+# ---------------------------------------------------------------------------
+stage_sync() {
+    log "sync: pull new on-chain transactions into SQLite"
+    entries=$(wallet_entries) || {
+        log "note: on-chain sync skipped (set WALLETS or XPUB+FINGERPRINT to enable)"
+        return 0
+    }
+    while IFS= read -r entry || [ -n "$entry" ]; do
+        case "$entry" in
+            "" ) continue ;;
+            *:*:*) ;;
+            *) fail "bad WALLETS entry '$entry' (expected name:fp:xpub)" ;;
+        esac
+        W=${entry%%:*}
+        log "sync: wallet $W via $RPC_URL (user ${RPC_USER:-<none>})"
+        dbg_rpc
+        if sync_out=$("$UTXOPROOF_BIN" sync --db "$DATA_DIR/utxoproof.db" \
+            --rpc-url "$RPC_URL" --rpc-user "$RPC_USER" \
+            --rpc-password "$RPC_PASSWORD" --wallet "$W" 2>&1); then
+            printf '%s\n' "$sync_out"
+        else
+            log "warning: on-chain sync skipped for $W (node unreachable or RPC error)"
+            printf '%s\n' "$sync_out"
+        fi
+    done <<EOF
+$entries
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# Stage: portfolio (overview + entity pages)
+# ---------------------------------------------------------------------------
+stage_portfolio() {
+    log "portfolio: build overview + entity pages"
+    if [ -n "$ENTITIES_FILE" ] && [ -f "$DATA_DIR/utxoproof.db" ]; then
+        if [ -f "$ENTITIES_FILE" ]; then
+            if port_out=$("$UTXOPROOF_BIN" portfolio --db "$DATA_DIR/utxoproof.db" \
+                --entities "$ENTITIES_FILE" --wallet "$WALLET" \
+                --price "${BTC_PRICE:-40000}" \
+                ${KRAKEN_LEDGERS:+--ledgers "$KRAKEN_LEDGERS"} \
+                ${KRAKEN_TRADES:+--trades "$KRAKEN_TRADES"} \
+                ${BANK_CSV:+--bank-list "$DATA_DIR/bank-list.txt"} \
+                --site-root "$DATA_DIR" \
+                --out "$DATA_DIR/portfolio" 2>&1); then
+                printf '%s\n' "$port_out"
+            else
+                log "warning: portfolio build skipped (entity config or DB issue)"
+                printf '%s\n' "$port_out"
+            fi
+        else
+            log "warning: entities file not found: $ENTITIES_FILE"
+        fi
+    elif [ -n "$ENTITIES_FILE" ]; then
+        log "note: portfolio skipped — DB $DATA_DIR/utxoproof.db not found; run with MODE=prepare first"
+    else
+        log "note: portfolio skipped (set ENTITIES_FILE to enable entity overview)"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Stage: report (HTML tax report + evidence ZIP)
+# ---------------------------------------------------------------------------
+stage_report() {
+    # Year selection doubles the branches below on purpose: arrays + set -u
+    # crash old bash (macOS ships 3.2), unquoted strings trip shellcheck.
+    if [ -n "$TAX_YEAR" ]; then
+        log "report: year $TAX_YEAR + evidence ZIP"
+        if [ -n "$CONFIG_FILE" ]; then
+            "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --year "$TAX_YEAR" \
+                --config "$CONFIG_FILE" --source "$KRAKEN_LEDGERS" \
+                ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
+                ${BANK_CSV:+--bank-list "$DATA_DIR/bank-list.txt"} \
+                --site-root "$DATA_DIR" \
+                --out "$DATA_DIR/$TAX_YEAR"
+        else
+            "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --year "$TAX_YEAR" \
+                --source "$KRAKEN_LEDGERS" \
+                ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
+                ${BANK_CSV:+--bank-list "$DATA_DIR/bank-list.txt"} \
+                --site-root "$DATA_DIR" \
+                --out "$DATA_DIR/$TAX_YEAR"
+        fi
+    else
+        log "report: every year in manual.csv + evidence ZIPs"
+        if [ -n "$CONFIG_FILE" ]; then
+            "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --all-years \
+                --config "$CONFIG_FILE" --source "$KRAKEN_LEDGERS" \
+                ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
+                ${BANK_CSV:+--bank-list "$DATA_DIR/bank-list.txt"} \
+                --site-root "$DATA_DIR" \
+                --out "$DATA_DIR"
+        else
+            "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --all-years \
+                --source "$KRAKEN_LEDGERS" \
+                ${KRAKEN_TRADES:+--source "$KRAKEN_TRADES"} \
+                ${BANK_CSV:+--bank-list "$DATA_DIR/bank-list.txt"} \
+                --site-root "$DATA_DIR" \
+                --out "$DATA_DIR"
+        fi
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Stage: status (holdings snapshot at price)
+# ---------------------------------------------------------------------------
+stage_status() {
+    log "status: holdings snapshot"
+    if [ -n "$BTC_PRICE" ]; then
+        "$UTXOPROOF_BIN" status --input "$DATA_DIR/manual.csv" --price "$BTC_PRICE"
+    else
+        "$UTXOPROOF_BIN" status --input "$DATA_DIR/manual.csv" \
+            --site-root "$DATA_DIR" \
+            --out "$DATA_DIR/current-status"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Stage: all-time summary
+# ---------------------------------------------------------------------------
+stage_alltime() {
+    log "alltime: multi-year summary"
+    "$UTXOPROOF_BIN" report --input "$DATA_DIR/manual.csv" --alltime \
+        --site-root "$DATA_DIR" \
+        --out "$DATA_DIR/alltime"
+}
+
+# ---------------------------------------------------------------------------
+# Stage: clean (dry-run unless CONFIRM=1)
+# ---------------------------------------------------------------------------
+clean_path() {
+    path=$1
+    if [ ! -e "$path" ]; then
+        return 0
+    fi
+    CLEAN_FOUND=1
+    if [ "${CONFIRM:-}" = "1" ]; then
+        rm -rf -- "$path"
+        log "removed: $path"
+    else
+        log "would remove: $path"
+    fi
+}
+
+stage_clean() {
+    CLEAN_FOUND=0
+    if [ "${CONFIRM:-}" = "1" ]; then
+        log "clean: deleting generated artifacts under $DATA_DIR"
+    else
+        log "clean: dry run under $DATA_DIR (set CONFIRM=1 to delete)"
+    fi
+    for name in \
+        manual.csv bank-list.txt bank-rows.csv \
+        utxoproof.db utxoproof.db-wal utxoproof.db-shm \
+        portfolio bank current-status alltime
+    do
+        clean_path "$DATA_DIR/$name"
+    done
+    # Report output is one directory per tax year (four digits).
+    for year_dir in "$DATA_DIR"/[0-9][0-9][0-9][0-9]; do
+        if [ -d "$year_dir" ]; then
+            clean_path "$year_dir"
+        fi
+    done
+    # Leftovers from interrupted multi-bank imports.
+    for leftover in "$DATA_DIR"/bank-rows-*.csv; do
+        if [ -e "$leftover" ]; then
+            clean_path "$leftover"
+        fi
+    done
+    if [ "$CLEAN_FOUND" -eq 0 ]; then
+        log "clean: nothing to remove"
+    elif [ "${CONFIRM:-}" != "1" ]; then
+        log "clean: dry run only; re-run with CONFIRM=1 to delete"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Mode logic
+# ---------------------------------------------------------------------------
+case "$MODE" in
+    prepare)
+        log "mode: prepare (halts if check reports shortfalls); years: ${TAX_YEAR:-all in manual.csv}"
+        stage_import
+        stage_bank_list
+        shortfalls=$(stage_check)
+        case "$shortfalls" in
+            "shortfalls: 0") log "no shortfalls — proceeding" ;;
+            *)
+                if [ -n "$ALLOW_SHORTFALLS" ]; then
+                    log "WARNING: proceeding despite $shortfalls (ALLOW_SHORTFALLS set) — figures are upper bounds, do not file from this"
+                else
+                    fail "coverage has shortfalls ($shortfalls) — aborting per prepare mode; investigate with 'utxoproof check', run with MODE=refresh, or set ALLOW_SHORTFALLS=1"
+                fi
+                ;;
+        esac
+        stage_compute
+        stage_setup
+        stage_sync
+        stage_report
+        stage_status
+        stage_portfolio
+        stage_bank
+        stage_fiat
+        ;;
+    refresh)
+        log "mode: refresh (idempotent rerun; shortfalls print but do not stop); years: ${TAX_YEAR:-all in manual.csv}"
+        stage_import
+        stage_bank_list
+        stage_check || true   # always prints; never aborts
+        stage_compute
+        stage_setup
+        stage_sync
+        stage_report
+        stage_status
+        stage_alltime
+        stage_portfolio
+        stage_bank
+        stage_fiat
+        ;;
+    clean)
+        stage_clean
+        ;;
+    *)
+        fail "unknown MODE='$MODE'; use 'prepare', 'refresh' or 'clean'"
+        ;;
+esac
+
+log "done: $DATA_DIR"

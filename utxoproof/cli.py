@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime
+import json
 import sqlite3
 import sys
 from collections.abc import Callable
@@ -624,6 +625,37 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     add_data_dir_arg(parser)
     sub = parser.add_subparsers(dest="command", required=True)
+    discover_cmd = sub.add_parser(
+        "discover", help="Validate input/accounts without writing a database"
+    )
+    discover_cmd.add_argument("--input", default="input", help="Input tree (default: ./input)")
+    discover_cmd.add_argument("--json", action="store_true", help="Machine-readable output")
+    discover_cmd.add_argument(
+        "--online", action="store_true", help="Also check Electrum/Core connectivity"
+    )
+    run_cmd = sub.add_parser("run", help="Discover + sync + import + report (v8 workflow)")
+    run_cmd.add_argument("--input", default="input", help="Input tree (default: ./input)")
+    run_cmd.add_argument(
+        "--data-dir", dest="run_data_dir", default=None, help="Output data directory"
+    )
+    run_cmd.add_argument("--plan", action="store_true", help="Print the run plan, change nothing")
+    run_cmd.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        help=(
+            "Run only these steps (comma-separated or repeatable): "
+            "labels, sync, exchanges, banks, report, portfolio"
+        ),
+    )
+    run_cmd.add_argument("--year", type=int, default=None, help="Tax year")
+    run_cmd.add_argument("--offline", action="store_true", help="Skip chain sync")
+    run_cmd.add_argument(
+        "--force-rescan", action="store_true", help="Clear chain tables and rescan all accounts"
+    )
+    run_cmd.add_argument("--price", type=Decimal, default=None, help="BTC/EUR price override")
+    run_cmd.add_argument("--as-of", default="", help="As-of date YYYY-MM-DD")
+    run_cmd.add_argument("--no-zip", action="store_true", help="Skip evidence ZIP")
     compute = sub.add_parser("compute", help="Sprint 0 gain/loss + Belgian tax check")
     compute.add_argument("--input", required=True, help="Manual CSV path")
     year_group = compute.add_mutually_exclusive_group(required=True)
@@ -754,6 +786,11 @@ def build_parser() -> argparse.ArgumentParser:
     rec.add_argument("--rpc-user", default="")
     rec.add_argument("--rpc-password", default="")
     rec.add_argument("--wallet", default="utxoproof_watchonly")
+    rec.add_argument(
+        "--input", default=None, help="Input tree; reconcile every account via Electrum"
+    )
+    rec.add_argument("--electrum-url", default=None, help="Electrum URL override")
+    rec.add_argument("--ca-file", default=None, help="Electrum TLS CA file")
     status = sub.add_parser("status", help="Holdings, cost basis, unrealized P&L")
     status.add_argument("--input", required=True, help="Manual CSV path")
     status.add_argument("--price", type=Decimal, default=None, help="BTC/EUR price override")
@@ -805,9 +842,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     prov.add_argument("--site-root", default=None, help="Data-dir site root (menu + hub links)")
     _add_live_prices_arg(prov)
-    port = sub.add_parser("portfolio", help="Entity overview from synced UTXOs")
+    port = sub.add_parser("portfolio", help="Account overview from synced UTXOs")
     port.add_argument("--db", default=None, help="SQLite DB (<data-dir>/utxoproof.db)")
-    port.add_argument("--entities", required=True, help="Entities TOML file")
+    port_source = port.add_mutually_exclusive_group(required=True)
+    port_source.add_argument("--input", default=None, help="Plan-v8 input tree (accounts/)")
+    port_source.add_argument("--entities", default=None, help="Legacy entities TOML file")
     port.add_argument("--wallet", default="utxoproof_watchonly", help="Synced wallet")
     port.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (saga links)")
     port.add_argument("--trades", default=None, help="Kraken trades.csv join for ledgers")
@@ -864,6 +903,15 @@ def build_parser() -> argparse.ArgumentParser:
     bank.add_argument("--provenance-dir", default=None, help="Link matches to existing pages")
     bank.add_argument("--out", required=True, help="Output directory for bank.html")
     bank.add_argument("--site-root", default=None, help="Data-dir site root (menu + hub links)")
+    label = sub.add_parser("label", help="Set or delete a user label for an account")
+    label.add_argument("--db", default=None, help="SQLite DB (default: <data-dir>/utxoproof.db)")
+    label.add_argument("--account", required=True, help="Account id")
+    label.add_argument(
+        "--type", default="output", choices=["tx", "addr", "output", "input"], help="Label type"
+    )
+    label.add_argument("--ref", required=True, help="txid, txid:vout, or address")
+    label.add_argument("--label", default=None, help="Label text; empty deletes")
+    label.add_argument("--delete", action="store_true", help="Delete the user label")
     attach = sub.add_parser("attach", help="Register a supporting file (scan, PDF, screenshot)")
     attach.add_argument("--file", required=True, help="File to register (copied in)")
     attach.add_argument("--db", default=None, help="SQLite DB (default: <data-dir>/utxoproof.db)")
@@ -1104,10 +1152,12 @@ def _run_sync(args: argparse.Namespace) -> int:
 
 
 def _run_reconcile(args: argparse.Namespace) -> int:
-    """Compare ours-unspent DB total against node balances (diagnostic, never crashes)."""
+    """Compare ours-unspent DB total against the selected backend (diagnostic)."""
+    db = _open_db(str(db_path(args)))
+    if getattr(args, "input", None):
+        return _reconcile_electrum(args, db)
     from utxoproof.bitcoin_rpc import BitcoinRPC
 
-    db = _open_db(str(db_path(args)))
     db_sats, db_n = db.execute(
         "SELECT COALESCE(SUM(value_sat), 0), COUNT(*) FROM tx_outputs "
         "WHERE spent_by_txid IS NULL AND is_mine = 1 AND ("
@@ -1140,6 +1190,77 @@ def _run_reconcile(args: argparse.Namespace) -> int:
         print("RECONCILED (gap 0)")
     else:
         print(f"GAP {gap:f} BTC — modeling incomplete, do not file from this")
+    return 0
+
+
+def _reconcile_electrum(args: argparse.Namespace, db: sqlite3.Connection) -> int:
+    """Per-account DB vs Electrum scripthash balances."""
+    from utxoproof.accounts import load_registry
+    from utxoproof.electrum import ElectrumClient, scripthash
+
+    try:
+        registry = load_registry(args.input)
+    except ValueError as exc:
+        print(f"cannot reconcile: {exc}")
+        return 2
+    if not registry.ok:
+        for error in registry.errors:
+            print(f"ERROR: {error}")
+        return 2
+    url = args.electrum_url or registry.config.chain.electrum_url
+    ca_file = args.ca_file or registry.config.chain.electrum_ca_file or None
+    total_db = 0
+    total_remote = 0
+    with ElectrumClient(url, ca_file=ca_file) as client:
+        for account in registry.by_kind("wallet"):
+            scripts = [
+                row[0]
+                for row in db.execute(
+                    "SELECT script_hex FROM account_scripts WHERE account_id=? "
+                    "ORDER BY chain, derivation_index",
+                    (account.id,),
+                ).fetchall()
+            ]
+            if not scripts:
+                # A low-level reconcile can run before the registry was ever
+                # persisted; derive from the manifest rather than comparing 0.
+                scripts = [script for _chain, _address, script in account.scripts()]
+            remote = 0
+            for start in range(0, len(scripts), 100):
+                chunk = scripts[start : start + 100]
+                calls: list[tuple[str, list[object]]] = [
+                    ("blockchain.scripthash.get_balance", [scripthash(script)]) for script in chunk
+                ]
+                for result in client.batch(calls):
+                    if not isinstance(result, dict):
+                        raise ValueError(f"Electrum balance for {account.id} is not an object")
+                    remote += int(result.get("confirmed", 0)) + int(result.get("unconfirmed", 0))
+            local = int(
+                db.execute(
+                    "SELECT COALESCE(SUM(value_sat), 0) FROM tx_outputs "
+                    "WHERE spent_by_txid IS NULL AND is_mine=1 AND account_id=?",
+                    (account.id,),
+                ).fetchone()[0]
+            )
+            total_db += local
+            total_remote += remote
+            status = "OK" if local == remote else "GAP"
+            print(
+                f"{account.id}: db={Decimal(local) / 100_000_000:f} BTC "
+                f"electrum={Decimal(remote) / 100_000_000:f} BTC [{status}]"
+            )
+    unattributed = db.execute(
+        "SELECT COUNT(*) FROM tx_outputs WHERE spent_by_txid IS NULL AND is_mine=1 "
+        "AND account_id IS NULL"
+    ).fetchone()[0]
+    if unattributed:
+        print(f"note: {unattributed} mine rows have no account_id (legacy DB)")
+    gap = Decimal(total_remote - total_db) / 100_000_000
+    print(
+        f"total: db={Decimal(total_db) / 100_000_000:f} BTC, "
+        f"electrum={Decimal(total_remote) / 100_000_000:f} BTC"
+    )
+    print("RECONCILED (gap 0)" if gap == 0 else f"GAP {gap:f} BTC — do not file from this")
     return 0
 
 
@@ -1276,10 +1397,29 @@ def _run_portfolio(args: argparse.Namespace) -> int:
     )
 
     db = _open_db(str(db_path(args)))
-    entities, fiat = load_entities(args.entities)
-    from utxoproof.tags import load_tag_config
+    labels_map: dict[str, str] = {}
+    address_map: dict[str, str] = {}
+    if getattr(args, "input", None):
+        from utxoproof.accounts import load_registry, portfolio_config
+        from utxoproof.labels import address_labels, output_labels
 
-    _, utxo_tags = load_tag_config(args.entities)
+        registry = load_registry(args.input)
+        if not registry.ok:
+            for error in registry.errors:
+                print(f"ERROR: {error}")
+            return 2
+        entities, fiat, utxo_tags = portfolio_config(registry)
+        labels_map = output_labels(db)
+        address_map = address_labels(db)
+        wallet = registry.by_kind("wallet")[0].id if registry.by_kind("wallet") else ""
+    else:
+        if not args.entities:
+            raise ValueError("portfolio needs --input (v8) or --entities (legacy)")
+        entities, fiat = load_entities(args.entities)
+        from utxoproof.tags import load_tag_config
+
+        _, utxo_tags = load_tag_config(args.entities)
+        wallet = args.wallet
     as_of = (
         datetime.date.fromisoformat(args.as_of)
         if args.as_of
@@ -1317,7 +1457,16 @@ def _run_portfolio(args: argparse.Namespace) -> int:
     trail = _trail_for(args, db)
     saga_sources = _saga_sources_from_args(args)
     portfolio, advisories = portfolio_from_db(
-        db, entities, fiat, args.wallet, curve, price, as_of, utxo_tags
+        db,
+        entities,
+        fiat,
+        wallet,
+        curve,
+        price,
+        as_of,
+        utxo_tags,
+        labels=labels_map or None,
+        address_labels=address_map or None,
     )
     print(f"utxos: {len(portfolio.utxos)} btc={portfolio.btc_total:.8f}")
     for eid, label, value, share in portfolio.allocation():
@@ -1581,6 +1730,32 @@ def _run_bank(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_label(args: argparse.Namespace) -> int:
+    from utxoproof.labels import LabelError, set_user_label
+
+    if not args.delete and args.label is None:
+        print("label: --label or --delete is required")
+        return 2
+    db = _open_db(str(db_path(args)))
+    try:
+        exists = db.execute("SELECT 1 FROM accounts WHERE id=?", (args.account,)).fetchone()
+        if not exists:
+            print(f"label: unknown account {args.account!r}; run the account import first")
+            return 2
+        text = "" if args.delete else str(args.label or "")
+        set_user_label(db, args.account, args.type, args.ref, text)
+    except (LabelError, sqlite3.Error) as exc:
+        print(f"label: {exc}")
+        return 2
+    finally:
+        db.close()
+    if text:
+        print(f"labeled {args.type} {args.ref} for {args.account}: {text}")
+    else:
+        print(f"deleted label {args.type} {args.ref} for {args.account}")
+    return 0
+
+
 def _run_attach(args: argparse.Namespace) -> int:
     import datetime
 
@@ -1717,6 +1892,41 @@ def _run_report_year(
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "discover":
+        from utxoproof.runner import discover, discover_text
+
+        try:
+            result = discover(args.input, online=args.online)
+        except (ValueError, OSError) as exc:
+            print(f"discover failed: {exc}")
+            return 2
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            for line in discover_text(args.input, online=args.online):
+                print(line)
+        return 0 if result["ok"] else 2
+    if args.command == "run":
+        from utxoproof.runner import RunOptions, run
+
+        try:
+            return run(
+                RunOptions(
+                    input_dir=args.input,
+                    data_dir=args.run_data_dir or args.data_dir or "data",
+                    plan=args.plan,
+                    only=tuple(args.only),
+                    year=args.year,
+                    offline=args.offline,
+                    force_rescan=args.force_rescan,
+                    price=args.price,
+                    as_of=args.as_of,
+                    no_zip=args.no_zip,
+                )
+            )
+        except (ValueError, OSError) as exc:
+            print(f"run failed: {exc}")
+            return 2
     if args.command == "compute":
         history = load_price_history(args.price_history)
         if args.all_years:
@@ -1794,6 +2004,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_fiat_check(args)
     if args.command == "bank":
         return _run_bank(args)
+    if args.command == "label":
+        return _run_label(args)
     if args.command == "attach":
         return _run_attach(args)
     return 1

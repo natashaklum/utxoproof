@@ -1,0 +1,7 @@
+kind = "wallet"
+label = "Sparrow savings"
+network = "mainnet"
+gap_limit = 20
+descriptor_receive_file = "receive.txt"
+labels_file = "labels.jsonl"
+tags = ["savings"]

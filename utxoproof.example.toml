@@ -1,7 +1,28 @@
-# Example utxoproof configuration (plan Sec. 16). Copy to utxoproof.toml and edit.
-# Only [taxpayer], [classifier] and [accounting] are read so far; the
-# [bitcoin]/[price_oracle]/[inputs]/[advisory]/[output] sections arrive with
-# their sprints and are ignored for now.
+# Example utxoproof configuration. Copy to utxoproof.toml and edit.
+# v8 installs put this file at input/utxoproof.toml next to accounts/.
+# Legacy v7 commands can also read it from the working/data directory.
+
+[owner]
+# One taxpayer; account labels live in accounts/<id>/account.toml.
+name = "self"
+
+[chain]
+# electrum (primary) or core (optional).
+backend = "electrum"
+network = "mainnet"
+electrum_url = "ssl://127.0.0.1:50002"
+# Path to the CA that signed your self-hosted Electrum certificate, if private.
+electrum_ca_file = ""
+# Core-only fallback:
+rpc_url = "http://127.0.0.1:8332"
+rpc_user = ""
+rpc_password = ""
+core_wallet = "utxoproof_watchonly"
+
+[reporting]
+# YYYY-MM-DD; empty means today (run) or the latest data year (report).
+as_of = ""
+tax_year = ""
 
 [taxpayer]
 reference = "BE-LOCAL"

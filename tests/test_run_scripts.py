@@ -1,4 +1,4 @@
-"""End-to-end runs of examples/run.sh (offline fixtures).
+"""End-to-end runs of examples/run_legacy.sh (offline fixtures).
 
 Two modes:
   MODE=prepare   (default in the script)   — stops if check reports shortfalls
@@ -43,7 +43,7 @@ def _shortfall_ledgers(path: Path) -> None:
 def test_refresh_end_to_end(tmp_path: Path) -> None:
     data = tmp_path / "data"
     proc = _run(
-        "run.sh",
+        "run_legacy.sh",
         {
             "DATA_DIR": str(data),
             "KRAKEN_LEDGERS": str(FIXTURES / "kraken_ledgers_2023.csv"),
@@ -65,7 +65,7 @@ def test_refresh_covers_every_data_year_by_default(tmp_path: Path) -> None:
 
     data = tmp_path / "data"
     proc = _run(
-        "run.sh",
+        "run_legacy.sh",
         {
             "DATA_DIR": str(data),
             "KRAKEN_LEDGERS": str(FIXTURES / "kraken_ledgers_2023.csv"),
@@ -86,7 +86,7 @@ def test_prepare_aborts_on_shortfalls(tmp_path: Path) -> None:
     ledgers = tmp_path / "ledgers.csv"
     _shortfall_ledgers(ledgers)
     proc = _run(
-        "run.sh",
+        "run_legacy.sh",
         {
             "DATA_DIR": str(tmp_path / "data"),
             "KRAKEN_LEDGERS": str(ledgers),
@@ -104,7 +104,7 @@ def test_prepare_allow_shortfalls_proceeds_with_warning(tmp_path: Path) -> None:
     ledgers = tmp_path / "ledgers.csv"
     _shortfall_ledgers(ledgers)
     proc = _run(
-        "run.sh",
+        "run_legacy.sh",
         {
             "DATA_DIR": str(tmp_path / "data"),
             "KRAKEN_LEDGERS": str(ledgers),
@@ -121,7 +121,7 @@ def test_prepare_allow_shortfalls_proceeds_with_warning(tmp_path: Path) -> None:
 
 
 def test_scripts_are_executable() -> None:
-    for name in ("run.sh",):
+    for name in ("run.sh", "run_legacy.sh"):
         mode = (REPO / "examples" / name).stat().st_mode
         assert mode & stat.S_IXUSR, name
 
@@ -129,7 +129,7 @@ def test_scripts_are_executable() -> None:
 def test_refresh_converts_bank_statement(tmp_path: Path) -> None:
     data = tmp_path / "data"
     proc = _run(
-        "run.sh",
+        "run_legacy.sh",
         {
             "DATA_DIR": str(data),
             "KRAKEN_LEDGERS": str(FIXTURES / "kraken_ledgers_2023.csv"),
@@ -150,7 +150,7 @@ def test_refresh_converts_bank_statement(tmp_path: Path) -> None:
 def test_refresh_bank_page_links_nav_and_matches(tmp_path: Path) -> None:
     data = tmp_path / "data"
     proc = _run(
-        "run.sh",
+        "run_legacy.sh",
         {
             "DATA_DIR": str(data),
             "KRAKEN_LEDGERS": str(FIXTURES / "kraken_ledgers_2023.csv"),
@@ -186,7 +186,7 @@ def test_refresh_merges_several_bank_statements(tmp_path: Path) -> None:
     kbc = FIXTURES / "kbc_2023.csv"
     ing = FIXTURES / "ing_2023.csv"
     proc = _run(
-        "run.sh",
+        "run_legacy.sh",
         {
             "DATA_DIR": str(data),
             "KRAKEN_LEDGERS": str(FIXTURES / "kraken_ledgers_2023.csv"),
@@ -222,7 +222,7 @@ def test_refresh_bank_paths_with_spaces(tmp_path: Path) -> None:
     kbc = spaced / "kbc statement.csv"
     shutil.copy(FIXTURES / "kbc_2023.csv", kbc)
     proc = _run(
-        "run.sh",
+        "run_legacy.sh",
         {
             "DATA_DIR": str(data),
             "KRAKEN_LEDGERS": str(FIXTURES / "kraken_ledgers_2023.csv"),
@@ -253,7 +253,7 @@ def test_refresh_mixed_encoding_bank_statements(tmp_path: Path) -> None:
         "11/01/2023;KBC Belgiës;BE68;100,00;R9\n".encode("cp1252")
     )
     proc = _run(
-        "run.sh",
+        "run_legacy.sh",
         {
             "DATA_DIR": str(data),
             "KRAKEN_LEDGERS": str(FIXTURES / "kraken_ledgers_2023.csv"),
@@ -292,7 +292,7 @@ def test_run_loops_setup_and_sync_per_wallet(tmp_path: Path) -> None:
         "STUB_LOG": str(log),
         "WALLETS": "cold:AA:xpub-cold|hot:BB:xpub-hot",
     }
-    proc = _run("run.sh", env)
+    proc = _run("run_legacy.sh", env)
     assert proc.returncode == 0, proc.stderr[-2000:]
     calls = log.read_text(encoding="utf-8")
     assert "--wallet cold" in calls and "--xpub xpub-cold" in calls
@@ -303,7 +303,7 @@ def test_run_loops_setup_and_sync_per_wallet(tmp_path: Path) -> None:
 
 def test_run_rejects_malformed_wallet_entry(tmp_path: Path) -> None:
     proc = _run(
-        "run.sh",
+        "run_legacy.sh",
         {
             "DATA_DIR": str(tmp_path / "data"),
             "KRAKEN_LEDGERS": str(FIXTURES / "kraken_ledgers_2023.csv"),
@@ -328,7 +328,7 @@ def test_clean_is_a_dry_run_by_default(tmp_path: Path) -> None:
     source = tmp_path / "ledgers.csv"
     source.write_text("source", encoding="utf-8")
 
-    proc = _run("run.sh", {"DATA_DIR": str(data), "MODE": "clean"})
+    proc = _run("run_legacy.sh", {"DATA_DIR": str(data), "MODE": "clean"})
     assert proc.returncode == 0, proc.stderr[-2000:]
     assert "would remove:" in proc.stdout
     assert "CONFIRM=1" in proc.stdout
@@ -351,7 +351,7 @@ def test_clean_confirm_removes_generated_artifacts_but_not_sources(tmp_path: Pat
     source = tmp_path / "ledgers.csv"
     source.write_text("source", encoding="utf-8")
 
-    proc = _run("run.sh", {"DATA_DIR": str(data), "MODE": "clean", "CONFIRM": "1"})
+    proc = _run("run_legacy.sh", {"DATA_DIR": str(data), "MODE": "clean", "CONFIRM": "1"})
     assert proc.returncode == 0, proc.stderr[-2000:]
     assert "removed:" in proc.stdout
     assert not (data / "manual.csv").exists()

@@ -1,0 +1,7 @@
+kind = "wallet"
+label = "Multisig vault"
+network = "mainnet"
+gap_limit = 20
+descriptor_receive_file = "receive.txt"
+descriptor_change_file = "change.txt"
+tags = ["cold-storage", "multisig"]

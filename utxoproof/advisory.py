@@ -55,6 +55,7 @@ class UTXOAdvisory:
     kyc_fraction: Decimal
     speculation_tainted: bool = False
     wallet_label: str = ""
+    account_id: str = ""
     source_type: str = ""
     address: str = ""
     flags: list[AdvisoryFlag] = field(default_factory=list)
@@ -125,6 +126,7 @@ def analyze_utxo(
     source_type: str = "",
     address: str = "",
     wallet_label: str = "",
+    account_id: str = "",
 ) -> UTXOAdvisory:
     """Build a fully flagged advisory for one UTXO."""
     holding_days = (as_of - acquisition_date).days if acquisition_date else 0
@@ -147,6 +149,7 @@ def analyze_utxo(
         source_type=source_type,
         address=address,
         wallet_label=wallet_label,
+        account_id=account_id,
     )
     advisory.flags = assign_flags(advisory)
     return advisory
@@ -162,7 +165,7 @@ def analyze_wallet(
     advisories = []
     rows = db.execute(
         "SELECT o.txid, o.vout, o.value_sat, o.kyc_status, o.kyc_fraction, t.block_time, "
-        "o.address, o.source_type, o.wallet_label FROM tx_outputs o "
+        "o.address, o.source_type, o.wallet_label, o.account_id FROM tx_outputs o "
         "JOIN transactions t ON t.txid=o.txid "
         "WHERE o.spent_by_txid IS NULL AND o.is_mine = 1"
     ).fetchall()
@@ -177,6 +180,7 @@ def analyze_wallet(
             address,
             source_type,
             wallet_label,
+            account_id,
         ) = row
         amount_btc = Decimal(value_sat) / Decimal(100_000_000)
         acquired = datetime.date.fromisoformat(block_time[:10])
@@ -195,6 +199,7 @@ def analyze_wallet(
                 address=address or "",
                 source_type=source_type or "",
                 wallet_label=wallet_label or "",
+                account_id=account_id or "",
             )
         )
     advisories.sort(key=lambda a: a.tax_if_sold_eur, reverse=True)

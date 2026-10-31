@@ -15,7 +15,7 @@ from decimal import Decimal
 from typing import Any
 
 from utxoproof.bitcoin_rpc import BitcoinRPC, BitcoinRPCError
-from utxoproof.descriptors import with_checksum
+from utxoproof.descriptors import descriptor_for_core, with_checksum
 
 SAT_PER_BTC = 100_000_000
 
@@ -34,6 +34,9 @@ class BitcoinCoreOnchainImporter:
         self._db = db
         self._height_cache: dict[str, int] = {}
         self._mine_cache: dict[str, bool] = {}
+        self._account_cache_loaded = False
+        self._account_by_script: dict[str, str] = {}
+        self._account_by_address: dict[str, str] = {}
 
     # -- setup -----------------------------------------------------------
 
@@ -68,6 +71,7 @@ class BitcoinCoreOnchainImporter:
         a narrower stored range is widened. Returns True when imported.
         Appends the Core-required `#checksum` suffix when absent.
         """
+        descriptor = descriptor_for_core(descriptor)
         core = with_checksum(descriptor).split("#")[0]
         have: tuple[int, int] | None = None
         try:
@@ -104,7 +108,7 @@ class BitcoinCoreOnchainImporter:
         seen = {row[0] for row in self._db.execute("SELECT txid FROM transactions").fetchall()}
         summary = {"txs_seen": 0, "new_txs": 0, "self_transfers": 0}
         self._mine_cache = {}
-        for entry in self._rpc.list_transactions(wallet):
+        for entry in self._rpc.list_all_transactions(wallet):
             summary["txs_seen"] += 1
             txid = str(entry["txid"])
             if txid in seen:
@@ -129,12 +133,39 @@ class BitcoinCoreOnchainImporter:
 
     # -- storage ----------------------------------------------------------
 
-    def _is_mine(self, address: str | None) -> bool:
-        """Whether an output address belongs to any wallet (cached per run).
+    def _load_account_registry(self) -> bool:
+        """Load the plan-v8 script registry once. False when no accounts exist."""
+        if self._account_cache_loaded:
+            return bool(self._account_by_script or self._account_by_address)
+        self._account_cache_loaded = True
+        try:
+            rows = self._db.execute(
+                "SELECT account_id, address, script_hex FROM account_scripts"
+            ).fetchall()
+        except sqlite3.Error:
+            rows = []
+        for account_id, address, script_hex in rows:
+            if script_hex:
+                self._account_by_script[str(script_hex)] = str(account_id)
+            if address:
+                self._account_by_address[str(address)] = str(account_id)
+        return bool(rows)
 
-        Address-less outputs (OP_RETURN, bare scripts) are never ours.
-        RPC failures fail open (assumed ours) to preserve pre-ownership syncs.
+    def _account_for(self, address: str | None, script_hex: str | None = None) -> str | None:
+        if self._load_account_registry():
+            return self._account_by_script.get(script_hex or "") or self._account_by_address.get(
+                address or ""
+            )
+        return None
+
+    def _is_mine(self, address: str | None, script_hex: str | None = None) -> bool:
+        """Whether an output belongs to a watched account/wallet (cached per run).
+
+        Plan-v8 DBs answer from ``account_scripts``. Legacy DBs fall back to Core
+        ``getaddressinfo``; RPC failures fail open to preserve old syncs.
         """
+        if self._load_account_registry():
+            return self._account_for(address, script_hex) is not None
         if not address:
             return False
         if address not in self._mine_cache:
@@ -150,14 +181,17 @@ class BitcoinCoreOnchainImporter:
         """Re-check ownership of every unspent output. Returns rows corrected to external."""
         fixed = 0
         rows = self._db.execute(
-            "SELECT txid, vout, address, is_mine FROM tx_outputs WHERE spent_by_txid IS NULL"
+            "SELECT txid, vout, address, script_hex, is_mine FROM tx_outputs "
+            "WHERE spent_by_txid IS NULL"
         ).fetchall()
-        for txid, vout, address, is_mine in rows:
-            mine = self._is_mine(address)
-            if bool(is_mine) != mine:
+        registry = self._load_account_registry()
+        for txid, vout, address, script_hex, is_mine in rows:
+            owner = self._account_for(address, script_hex)
+            mine = owner is not None if registry else self._is_mine(address, script_hex)
+            if bool(is_mine) != mine or (owner is not None):
                 self._db.execute(
-                    "UPDATE tx_outputs SET is_mine=? WHERE txid=? AND vout=?",
-                    (int(mine), txid, vout),
+                    "UPDATE tx_outputs SET is_mine=?, account_id=? WHERE txid=? AND vout=?",
+                    (int(mine), owner, txid, vout),
                 )
                 fixed += int(not mine)
         self._db.commit()
@@ -212,17 +246,23 @@ class BitcoinCoreOnchainImporter:
             )
         addresses: list[str | None] = []
         for vout in raw.get("vout", []):
-            address = vout.get("scriptPubKey", {}).get("address")
+            script_pub_key = vout.get("scriptPubKey", {})
+            address = script_pub_key.get("address")
+            script_hex = script_pub_key.get("hex")
             addresses.append(address)
+            owner = self._account_for(address, script_hex)
             self._db.execute(
-                "INSERT OR IGNORE INTO tx_outputs (txid, vout, address, value_sat, is_mine) "
-                "VALUES (?,?,?,?,?)",
+                "INSERT OR IGNORE INTO tx_outputs "
+                "(txid, vout, address, script_hex, value_sat, is_mine, account_id) "
+                "VALUES (?,?,?,?,?,?,?)",
                 (
                     txid,
                     int(vout["n"]),
                     address,
+                    script_hex,
                     _btc_to_sat(vout["value"]),
-                    int(self._is_mine(address)),
+                    int(owner is not None or self._is_mine(address, script_hex)),
+                    owner,
                 ),
             )
         if wallet is not None:

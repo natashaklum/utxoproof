@@ -36,10 +36,37 @@ class AccountingConfig:
 
 
 @dataclass
+class OwnerConfig:
+    name: str = "self"
+
+
+@dataclass
+class ChainConfig:
+    backend: str = "electrum"  # electrum | core
+    network: str = "mainnet"
+    electrum_url: str = "ssl://127.0.0.1:50002"
+    electrum_ca_file: str = ""
+    rpc_url: str = "http://127.0.0.1:8332"
+    rpc_user: str = ""
+    rpc_password: str = ""
+    core_wallet: str = "utxoproof_watchonly"
+
+
+@dataclass
+class ReportingConfig:
+    price: Decimal | None = None
+    as_of: str = ""
+    tax_year: str = ""
+
+
+@dataclass
 class Config:
     taxpayer: TaxpayerConfig = field(default_factory=TaxpayerConfig)
     classifier: ClassifierConfig = field(default_factory=ClassifierConfig)
     accounting: AccountingConfig = field(default_factory=AccountingConfig)
+    owner: OwnerConfig = field(default_factory=OwnerConfig)
+    chain: ChainConfig = field(default_factory=ChainConfig)
+    reporting: ReportingConfig = field(default_factory=ReportingConfig)
 
 
 def _decimal(value: object, default: Decimal) -> Decimal:
@@ -78,6 +105,10 @@ def load_config(path: str | Path | None = None) -> Config:
     taxpayer = data.get("taxpayer", {})
     classifier = data.get("classifier", {})
     accounting = data.get("accounting", {})
+    owner = data.get("owner", {})
+    chain = data.get("chain", {})
+    reporting = data.get("reporting", {})
+    price_raw = reporting.get("price")
     return Config(
         taxpayer=TaxpayerConfig(
             reference=str(taxpayer.get("reference", "BE-LOCAL")),
@@ -96,4 +127,20 @@ def load_config(path: str | Path | None = None) -> Config:
             btc_income_fraction=_decimal(classifier.get("btc_income_fraction", "0"), Decimal("0")),
         ),
         accounting=AccountingConfig(method=str(accounting.get("method", "moving_average"))),
+        owner=OwnerConfig(name=str(owner.get("name", "self"))),
+        chain=ChainConfig(
+            backend=str(chain.get("backend", "electrum")).strip().lower(),
+            network=str(chain.get("network", "mainnet")).strip().lower(),
+            electrum_url=str(chain.get("electrum_url", "ssl://127.0.0.1:50002")),
+            electrum_ca_file=str(chain.get("electrum_ca_file", "")),
+            rpc_url=str(chain.get("rpc_url", "http://127.0.0.1:8332")),
+            rpc_user=str(chain.get("rpc_user", "")),
+            rpc_password=str(chain.get("rpc_password", "")),
+            core_wallet=str(chain.get("core_wallet", "utxoproof_watchonly")),
+        ),
+        reporting=ReportingConfig(
+            price=_decimal(price_raw, Decimal("0")) if price_raw is not None else None,
+            as_of=str(reporting.get("as_of", "")),
+            tax_year=str(reporting.get("tax_year", "")),
+        ),
     )

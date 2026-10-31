@@ -18,10 +18,20 @@ def init_db(db: sqlite3.Connection) -> None:
 #   assumed ours, corrected by the sync ownership pass or `reconcile`).
 # - 2026-10-28: provenance_links (Sprint 12 saga edges). The schema script
 #   creates the table idempotently on old DBs; no column migration is needed.
+# - 2026-10-30: plan v8 accounts/account_scripts/labels + tx_outputs.account_id
+#   and script_hex (per-output ownership). Tables come from the schema script;
+#   only columns need ALTER TABLE on old DBs.
 def _migrate(db: sqlite3.Connection) -> None:
     cols = {row[1] for row in db.execute("PRAGMA table_info(tx_outputs)").fetchall()}
     if "is_mine" not in cols:
         db.execute("ALTER TABLE tx_outputs ADD COLUMN is_mine INTEGER NOT NULL DEFAULT 1")
+    if "account_id" not in cols:
+        db.execute("ALTER TABLE tx_outputs ADD COLUMN account_id TEXT")
+    if "script_hex" not in cols:
+        db.execute("ALTER TABLE tx_outputs ADD COLUMN script_hex TEXT")
+    # Indexes created here (not in schema.sql) so old DBs gain columns first.
+    db.execute("CREATE INDEX IF NOT EXISTS idx_tx_outputs_account ON tx_outputs(account_id)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_tx_outputs_script ON tx_outputs(script_hex)")
     db.commit()
 
 

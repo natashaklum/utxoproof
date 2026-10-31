@@ -169,8 +169,9 @@ INTROS = {
     ),
     "overview": (
         "The whole portfolio on one page: net worth, allocation across "
-        "wallets, bank and exchange balances, and the KYC split. Click an "
-        "entity for its UTXOs, then a UTXO for its provenance."
+        "wallets, bank and exchange balances, credit-card liabilities, and "
+        "the KYC split. Click an account for its UTXOs, then a UTXO for its "
+        "provenance."
     ),
     "entity": (
         "Everything held in one place: each UTXO with value and KYC status, "
@@ -404,7 +405,7 @@ def entity_review_links(
     for entity in portfolio.entities:
         target: Path | None = None
         title = ""
-        if entity.kind == "bank":
+        if entity.kind in ("bank", "credit_card"):
             target, title = root / "bank" / "bank.html", "Bank review"
         elif entity.kind == "exchange" and year is not None:
             target, title = root / str(year) / "report.html", f"Tax report {year}"
@@ -685,6 +686,7 @@ def write_bank_page(
     unmatched_eur = sum((abs(r.amount_eur) for r in unmatched), Decimal("0"))
     review_split = [("matched", matched_eur), ("unmatched", unmatched_eur)]
     review_colors = {"matched": "#3faf6e", "unmatched": "#e8a13d"}
+    has_accounts = any(r.account_id for r in rows)
     target.write_text(
         _env()
         .get_template("bank.html.j2")
@@ -697,6 +699,7 @@ def write_bank_page(
                     "amount": f"{r.amount_eur:,.2f}",
                     "counterparty": r.counterparty_iban or "—",
                     "reference": r.reference or "—",
+                    "account": r.account_id or "—",
                     "source": Path(r.source_file).name if r.source_file else "—",
                 }
                 for r in rows
@@ -710,6 +713,7 @@ def write_bank_page(
                     "date": m.bank.date.isoformat(),
                     "description": m.bank.description,
                     "amount": f"{m.bank.amount_eur:,.2f}",
+                    "account": m.bank.account_id or "—",
                     "source": Path(m.bank.source_file).name if m.bank.source_file else "—",
                     **chain_cell(m),
                 }
@@ -720,6 +724,7 @@ def write_bank_page(
                     "date": r.date.isoformat(),
                     "description": r.description,
                     "amount": f"{r.amount_eur:,.2f}",
+                    "account": r.account_id or "—",
                     "source": Path(r.source_file).name if r.source_file else "—",
                 }
                 for r in unmatched
@@ -728,6 +733,7 @@ def write_bank_page(
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
             nav=_resolve_nav(nav, site_root, target),
+            has_accounts=has_accounts,
             review_donut=donut_ring(review_split, colors=review_colors),
             review_legend=[
                 {"color": color, "label": label, "value": f"{value:,.2f}"}
@@ -796,9 +802,18 @@ def build_provenance_context(
         for row in document.source_coverage
     ]
     evidence = _evidence_refs(document)
+    from utxoproof.labels import label_text
+
+    output_label = label_text(db, "output", f"{txid}:{vout}")
+    tx_label = label_text(db, "tx", txid)
+    utxo_label = " · ".join(dict.fromkeys(x for x in (output_label, tx_label) if x))
+    address = getattr(target, "address", "") or ""
+    address_label = label_text(db, "addr", address) if address else ""
     return {
         "txid": txid,
         "vout": vout,
+        "labels": utxo_label,
+        "address_label": address_label,
         "amount_btc": f"{target.amount_btc:.8f}",
         "current_value_eur": f"{current_value:.2f}",
         "current_price_eur": f"{current_price_eur:.2f}",
@@ -1172,7 +1187,7 @@ def build_overview_context(
             {
                 "href": f"../entities/{eid}.html",
                 "label": label,
-                "kind": next(e.kind for e in portfolio.entities if e.id == eid),
+                "kind": next(e.kind for e in portfolio.entities if e.id == eid).replace("_", " "),
                 "utxos": sum(1 for u in portfolio.utxos if u.entity_id == eid),
                 "btc": f"{_entity_btc(portfolio, eid):.8f}",
                 "value": f"{value:,.2f}",
@@ -1241,9 +1256,10 @@ def build_entity_context(
     return {
         "label": entity.label,
         "back_href": back_href,
-        "kind": entity.kind,
+        "kind": entity.kind.replace("_", " "),
         "detail": entity.detail,
         "total_eur": f"{portfolio.entity_value_eur(entity.id):,.2f}",
+        "info_value_eur": f"{sum(value for _symbol, _quantity, value in entity.holdings):,.2f}",
         "review": dict(review or {}),
         "utxos": [
             {
@@ -1257,10 +1273,19 @@ def build_entity_context(
                 "tags": ",".join(u.tags),
                 "coverage": f"{u.coverage_share:.0%}",
                 "coverage_tier": u.coverage_tier or "unresolved",
+                "labels": " · ".join(u.labels),
             }
             for u in utxos
         ],
         "fiat_rows": [{"note": f.note, "amount": f"{f.amount_eur:,.2f}"} for f in fiat_rows],
+        "holdings": [
+            {
+                "symbol": symbol,
+                "quantity": f"{quantity:f}",
+                "value": f"{value:,.2f}",
+            }
+            for symbol, quantity, value in entity.holdings
+        ],
         "utxo_bars": svg_bars([(f"{u.txid}:{u.vout}", u.eur_value, "") for u in utxos])
         if utxos
         else "",

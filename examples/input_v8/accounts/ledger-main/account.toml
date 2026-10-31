@@ -1,0 +1,9 @@
+kind = "wallet"
+label = "Ledger main"
+network = "mainnet"
+gap_limit = 20
+xpub = "xpub6C1HVMz946r433QEjZGpYYWYcspxXXBPys5PBGkmQboRXE6RLfFiStEkKbWKCZaPgDrzZh9nUEunxuiuy6MNdw23du2Ek7GoKYMJVH8eK5E"
+fingerprint = "3442193e"
+purpose = 84
+labels_file = "labels.jsonl"
+tags = ["cold-storage"]

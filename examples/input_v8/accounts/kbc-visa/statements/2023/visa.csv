@@ -1,0 +1,4 @@
+kredietkaart;kaarthouder;uitgavenstaat;datum verrichting;Datum verrekening;bedrag;credit;debet;munt;koers;bedrag in EUR;Kosten op verrichting;Handelaar;locatie;land;toelichting
+999999XXXXXX0000;FAKE HOLDER;juni 2023;15/06/2023;16/06/2023;-42,500000000;;-42,500000000;EUR;1,000000000;-42,50;0,00;FAKE*Shop;example.com;België;Example purchase
+424242XXXXXX4242;FAKE HOLDER;juni 2023;20/06/2023;20/06/2023;100,000000000;100,000000000;;USD;0,920000000;92,00;1,50;FAKE*Refund;example.org;Verenigde Staten;Refund test
+555555XXXXXX5555;FAKE HOLDER;juli 2023;10/07/2023;11/07/2023;50,000000000;;-50,000000000;USD;0,900000000;;0,00;FAKE*Usd;example.net;Nederland;FX fallback

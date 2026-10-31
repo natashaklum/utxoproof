@@ -25,6 +25,7 @@ class BankRow:
     reference: str | None
     source_file: str = ""
     row_number: int = 0  # 1-based CSV line, stable evidence ref after re-sorts
+    account_id: str = ""  # plan-v8 account folder attribution
 
 
 @dataclass
@@ -268,7 +269,9 @@ def _read_text(path: Path, encoding: str | None) -> str:
         raise ValueError(f"{path}: neither UTF-8 nor Windows-1252 decodes it: {exc}") from exc
 
 
-def parse_bank_csv(path: str | Path, bank: str, encoding: str | None = None) -> list[BankRow]:
+def parse_bank_csv(
+    path: str | Path, bank: str, encoding: str | None = None, account_id: str = ""
+) -> list[BankRow]:
     """Parse one bank statement file with the bank's profile."""
     canonical = resolve_bank(bank)
     if canonical not in BANK_PROFILES:
@@ -294,6 +297,7 @@ def parse_bank_csv(path: str | Path, bank: str, encoding: str | None = None) -> 
                     reference=_pick(row, profile.reference_cols) or None,
                     source_file=str(path),
                     row_number=reader.line_num,
+                    account_id=account_id,
                 )
             )
     rows.sort(key=lambda r: r.date.isoformat())
