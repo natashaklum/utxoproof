@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<!--
+  Source for the published Getting Started guide.
+  scripts/build_demo.py copies this folder verbatim to site/guide/.
+  Static HTML/CSS/SVG only: no JavaScript, no external assets, no analytics.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Getting started · utxoproof</title>
+  <meta name="description" content="A calm, high-volume onboarding guide for utxoproof: inventory your wallets, exchanges, banks and statements, validate the tree, pilot one slice, then scale to a filing-ready local ledger.">
+  <meta name="theme-color" content="#0b1220">
+  <meta property="og:title" content="utxoproof Getting Started">
+  <meta property="og:description" content="From a shoebox of exports to one trustworthy Bitcoin ledger. A practical rollout guide for self-custodians with a lot of history.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://natashaklum.github.io/utxoproof/guide/">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23f7931a'/%3E%3Ctext x='32' y='45' font-family='Georgia,serif' font-size='40' font-weight='700' text-anchor='middle' fill='white'%3E%E2%82%BF%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to the guide</a>
+
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M4 7h16v12H4z"/><path d="M4 7l2-3h12l2 3"/><circle cx="16.5" cy="13" r="1.2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-bank" viewBox="0 0 24 24"><path d="m3 9 9-5 9 5"/><path d="M5 10v7M9 10v7M15 10v7M19 10v7M3 20h18"/></symbol>
+    <symbol id="i-card" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></symbol>
+    <symbol id="i-exchange" viewBox="0 0 24 24"><path d="M4 8h14m-4-4 4 4-4 4"/><path d="M20 16H6m4-4-4 4 4 4"/></symbol>
+    <symbol id="i-broker" viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 4-4 3 3 5-6"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v10H3z"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 4-4 3 3 5-6"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></symbol>
+    <symbol id="i-drive" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="6" rx="2"/><rect x="3" y="13" width="18" height="6" rx="2"/><circle cx="7" cy="8" r=".9" fill="currentColor" stroke="none"/><circle cx="7" cy="16" r=".9" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8m-3 1 2 2m-5 1 2 2"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 20h20z"/><path d="M12 9v5M12 17h.01"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></symbol>
+  </svg>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../index.html">
+        <span class="brand-mark" aria-hidden="true">₿</span>
+        <span>utxoproof</span>
+        <span class="brand-sub">getting started</span>
+      </a>
+      <nav class="topnav" aria-label="Site links">
+        <a href="#inventory">Start</a>
+        <a href="../v8/overview/overview.html">Live demo</a>
+        <a href="../docs/usage.html">Reference</a>
+        <a class="github" href="https://github.com/natashaklum/utxoproof">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="pulse" aria-hidden="true"></span> v8 account workflow · high-volume onboarding</div>
+          <h1>From a shoebox of exports to one <em>trustworthy</em> Bitcoin ledger.</h1>
+          <p class="lede">You have years of wallets, exchange CSVs, bank statements and screenshots. This is the calm order to turn them into a local, auditable tax file — <strong>without importing everything at once</strong>.</p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#inventory">Start the rollout <svg width="16" height="16" aria-hidden="true"><use href="#i-arrow"></use></svg></a>
+            <a class="btn btn-ghost" href="../v8/overview/overview.html">Open the live demo <span aria-hidden="true">↗</span></a>
+          </div>
+          <ul class="hero-facts">
+            <li><svg aria-hidden="true"><use href="#i-lock"></use></svg> watch-only descriptors</li>
+            <li><svg aria-hidden="true"><use href="#i-layers"></use></svg> one local SQLite ledger</li>
+            <li><svg aria-hidden="true"><use href="#i-file"></use></svg> static HTML + evidence ZIP</li>
+          </ul>
+        </div>
+        <div class="hero-art">
+          <img src="images/hero.svg" width="720" height="620" alt="One owner connected to wallet, exchange, bank, credit-card and broker account folders, feeding a local report and evidence ZIP.">
+        </div>
+      </div>
+    </section>
+
+    <div class="reality" aria-label="Three principles">
+      <div class="reality-card">
+        <span class="tag">Start small</span>
+        <p><strong>You do not need a perfect archive to begin.</strong> One wallet, one exchange and one statement are enough to prove the pipeline.</p>
+      </div>
+      <div class="reality-card">
+        <span class="tag">Keep the source</span>
+        <p><strong>The input tree is the source of truth.</strong> Generated DBs and reports live in a separate data folder, never back inside <code>input/</code>.</p>
+      </div>
+      <div class="reality-card">
+        <span class="tag">Validate first</span>
+        <p><strong>A failed checkpoint is cheap.</strong> A plausible-looking tax file built on an unvalidated tree is not.</p>
+      </div>
+    </div>
+
+    <div class="page">
+      <aside class="toc" aria-label="On this page">
+        <p class="toc-title">On this page</p>
+        <a class="toc-cta" href="#inventory">Start here →</a>
+        <a href="#mental-model">The mental model</a>
+        <a href="#inventory">1. Take inventory</a>
+        <a href="#workspace">2. Create the workspace</a>
+        <a href="#accounts">3. Build the owner map</a>
+        <a href="#wallets">4. Load the chain side</a>
+        <a href="#fiat-side">5. Load the fiat side</a>
+        <a href="#validate">6. Validate offline</a>
+        <a href="#pilot">7. Pilot one slice</a>
+        <a href="#full-run">8. The full run</a>
+        <a href="#reconcile">9. Reconcile and review</a>
+        <a href="#scale">10. Scaling playbook</a>
+        <a href="#limits">11. Honest limits</a>
+        <a href="#troubleshoot">12. Troubleshooting</a>
+        <a href="#checklist">13. Printable checklist</a>
+        <p class="toc-meta"><strong>Time to first useful report</strong>Less than a full archive. Start with the slice that answers one tax year.</p>
+      </aside>
+
+      <article class="article">
+        <section id="mental-model">
+          <div class="section-kicker">The mental model</div>
+          <h2>One owner. Many accounts. One ledger.</h2>
+          <p class="lede">utxoproof is not a wallet and it is not a bank. It is a local reconciliation tool: you describe one taxpayer and the places value lived, and it builds a reproducible graph from those sources.</p>
+          <figure class="diagram">
+            <img src="images/account-model.svg" width="1200" height="710" alt="A central owner card connects to five account kinds: wallet, bank, credit card, exchange and broker. Descriptors establish ownership; BIP329 labels are display metadata only." loading="lazy">
+            <figcaption><strong>Figure 1</strong> Every source belongs to exactly one account folder. Descriptors establish ownership per output; labels only describe what you already own.</figcaption>
+          </figure>
+          <div class="grid-4">
+            <div class="card"><div class="icon"><svg aria-hidden="true"><use href="#i-folder"></use></svg></div><h3>One owner</h3><p>One taxpayer per input tree. A spouse or a separate entity gets its own tree and data directory, never a mixed ledger.</p></div>
+            <div class="card teal"><div class="icon"><svg aria-hidden="true"><use href="#i-key"></use></svg></div><h3>Descriptors own</h3><p>Exported descriptors derive the scripts. Ownership is attributed per output, not per transaction and never by label.</p></div>
+            <div class="card blue"><div class="icon"><svg aria-hidden="true"><use href="#i-layers"></use></svg></div><h3>Sources stay put</h3><p>Account folders contain manifests and source files. The database, imports, reports and evidence bundle are generated elsewhere.</p></div>
+            <div class="card green"><div class="icon"><svg aria-hidden="true"><use href="#i-file"></use></svg></div><h3>Everything is static</h3><p>Reports are plain HTML with inline SVG charts. No JavaScript, no cloud dependency, no analytics. Archive them as-is.</p></div>
+          </div>
+          <div class="callout neutral">
+            <span class="label">The rule that prevents most messes</span>
+            <p>Never put <code>utxoproof.db</code>, <code>imports/</code>, <code>reports/</code> or <code>evidence/</code> inside <code>input/</code>. The runner refuses a data directory nested inside the input tree, because generated files must never become source files.</p>
+          </div>
+          <div class="pill-row">
+            <span class="pill hot">wallet</span>
+            <span class="pill">bank</span>
+            <span class="pill">credit_card</span>
+            <span class="pill">exchange</span>
+            <span class="pill">broker</span>
+            <span class="pill good">descriptor ownership</span>
+            <span class="pill info">BIP329 labels</span>
+          </div>
+        </section>
+
+        <section id="inventory">
+          <div class="section-kicker">Step 1</div>
+          <h2>Take inventory before you touch the tool.</h2>
+          <p class="lede">With a lot of data, the dangerous move is opening every export at once. First sort what you have into three piles: <strong>chain ownership</strong>, <strong>fiat/trade evidence</strong>, and <strong>human evidence</strong>. Then map each pile to one account kind.</p>
+
+          <div class="grid-3">
+            <div class="card"><div class="icon"><svg aria-hidden="true"><use href="#i-wallet"></use></svg></div><h3>Chain ownership</h3><p>Descriptors, xpubs and BIP329 labels. This is the only pile that establishes which on-chain outputs are yours.</p></div>
+            <div class="card teal"><div class="icon"><svg aria-hidden="true"><use href="#i-exchange"></use></svg></div><h3>Fiat &amp; trades</h3><p>Bank statements, card statements, Kraken ledgers/trades and broker holdings. These explain the euros around the BTC.</p></div>
+            <div class="card red"><div class="icon"><svg aria-hidden="true"><use href="#i-file"></use></svg></div><h3>Human evidence</h3><p>Withdrawal confirmations, emails, scans and screenshots. Attach them after the DB exists; originals stay untouched.</p></div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>What you have</th><th>Goes into</th><th>Account kind</th><th>Watch out for</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><strong>Exported descriptor</strong> or xpub</td><td><code>accounts/&lt;id&gt;/receive.txt</code> and <code>change.txt</code></td><td><span class="pill hot">wallet</span></td><td>Watch-only only. One folder per descriptor set; duplicate scripts across folders are a hard error.</td></tr>
+                <tr><td><strong>BIP329 labels</strong></td><td><code>accounts/&lt;id&gt;/labels.jsonl</code></td><td><span class="pill hot">wallet</span></td><td>Labels are display metadata. They never create ownership, tags or tax treatment.</td></tr>
+                <tr><td><strong>Kraken ledgers + trades</strong></td><td><code>ledgers.csv</code> and <code>trades.csv</code></td><td><span class="pill">exchange</span></td><td>Keep both files and all years. v8 account manifests currently support Kraken only.</td></tr>
+                <tr><td><strong>Bank statement CSV</strong></td><td><code>accounts/&lt;id&gt;/statements/**/*.csv</code></td><td><span class="pill">bank</span></td><td>EUR only. A profile parser is required; a balance alone is not a bank account.</td></tr>
+                <tr><td><strong>Credit-card statement</strong></td><td><code>accounts/&lt;id&gt;/statements/**/*.csv</code></td><td><span class="pill">credit_card</span></td><td>A card is a liability. Put the owed balance in as a negative amount.</td></tr>
+                <tr><td><strong>Broker holdings</strong></td><td><code>account.toml</code> → <code>[[holdings]]</code></td><td><span class="pill">broker</span></td><td>Informational only. It never enters BTC tax math.</td></tr>
+                <tr><td><strong>PDFs, scans, emails</strong></td><td><code>utxoproof attach</code> after the DB exists</td><td><span class="pill">evidence</span></td><td>Originals are copied and hashed; re-attaching identical content is a no-op.</td></tr>
+                <tr><td><strong>Coinbase / Binance / Bisq / manual CSV</strong></td><td>Legacy <code>import</code> → <code>manual.csv</code></td><td><span class="pill info">legacy path</span></td><td>Convert with <code>utxoproof import</code> and use the report path until a v8 exchange adapter lands.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout danger">
+            <span class="label">Do not collect these</span>
+            <p>No seed phrases. No private keys. No exchange passwords or API secrets. utxoproof only needs watch-only public keys, addresses and statements. A descriptor is still sensitive — it reveals your addresses — but it cannot spend your coins.</p>
+          </div>
+
+          <h3>Write the inventory down</h3>
+          <p>Make a simple text note before creating folders. For each account, write the id, kind, what source file is authoritative, and which years it covers. This takes ten minutes and saves hours when a parser disagrees with a statement.</p>
+          <pre><span class="c"># inventory.txt — keep it next to your own notes, not inside input/</span>
+ledger-main    wallet       Sparrow export, 2019–2025
+sparrow-savings wallet      Sparrow export, 2021–2025
+kbc-checking   bank         KBC CSV statements, 2018–2025
+kbc-visa       credit_card  KBC card statements, 2018–2025
+kraken         exchange     Kraken ledgers + trades, 2018–2025
+degiro         broker       holdings screenshot, as of 2025-12-31</pre>
+          <p class="small">The ids above are examples. Use stable, lowercase, URL-safe ids; they become page URLs and account references in reports.</p>
+        </section>
+
+        <section id="workspace">
+          <div class="section-kicker">Step 2</div>
+          <h2>Create a workspace that cannot contaminate itself.</h2>
+          <p class="lede">Keep the code checkout, the source data and the generated output mentally separate. In practice, one data root can hold both <code>input/</code> and generated output, as long as the generated files are never inside <code>input/</code>.</p>
+
+          <figure class="diagram">
+            <img src="images/pipeline.svg" width="1200" height="620" alt="The five-stage pipeline: source folders, offline discovery, ingest, one local SQLite ledger, and static reports plus evidence ZIP." loading="lazy">
+            <figcaption><strong>Figure 2</strong> Source files enter once, validate before any network call, and leave as static reports and a hash-manifested evidence bundle.</figcaption>
+          </figure>
+
+          <pre class="tree">~/utxoproof-data/                  <span class="c"># one root, outside the git checkout</span>
+├── input/                         <span class="c"># source of truth — back this up</span>
+│   ├── utxoproof.toml
+│   └── accounts/
+│       ├── ledger-main/
+│       │   ├── account.toml
+│       │   ├── receive.txt
+│       │   ├── change.txt
+│       │   └── labels.jsonl
+│       ├── kbc-checking/
+│       │   ├── account.toml
+│       │   └── statements/2023/*.csv
+│       ├── kraken/
+│       │   ├── account.toml
+│       │   ├── ledgers.csv
+│       │   └── trades.csv
+│       └── degiro/
+│           └── account.toml
+├── utxoproof.db                   <span class="c"># generated, reproducible</span>
+├── imports/                       <span class="c"># generated intermediates</span>
+├── reports/                       <span class="c"># static HTML dashboard + tax report</span>
+└── evidence/                      <span class="c"># attachments — back this up too</span></pre>
+
+          <div class="steps">
+            <div class="step">
+              <div>
+                <h4>Pick a fresh data root</h4>
+                <p>Do not point your first real run at an old v7 database or a folder full of experiments. A new folder makes rollback trivial: delete it and start again.</p>
+                <pre><span class="p">$</span> export UTXOPROOF_DATA_DIR=~/utxoproof-data
+<span class="p">$</span> mkdir -p "$UTXOPROOF_DATA_DIR/input/accounts"</pre>
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <h4>Copy and edit the config</h4>
+                <p>Start from the shipped example. Review the owner, chain backend, reporting year and communal surcharge rate before importing data.</p>
+                <pre><span class="p">$</span> cp utxoproof.example.toml "$UTXOPROOF_DATA_DIR/input/utxoproof.toml"
+<span class="p">$</span> $EDITOR "$UTXOPROOF_DATA_DIR/input/utxoproof.toml"</pre>
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <h4>Set the minimum that matters</h4>
+                <p>Everything else has a default. These four blocks are the ones that change real output.</p>
+                <pre>[owner]
+name = "Your name"
+
+[chain]
+backend = "electrum"
+network = "mainnet"
+electrum_url = "ssl://127.0.0.1:50002"
+electrum_ca_file = ""
+
+[reporting]
+tax_year = "2023"       <span class="c"># or leave empty and use --year</span>
+
+[taxpayer]
+communal_surcharge_rate = 0.07  <span class="c"># Brussels 0.0587 · Ghent 0.076 · Antwerp 0.08</span></pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="card teal"><div class="icon"><svg aria-hidden="true"><use href="#i-shield"></use></svg></div><h3>Privacy default</h3><p>Use a self-hosted Electrum server you trust. A public server sees every address your wallet queries. The public smoke test is for the spec-vector demo only, not your real xpub.</p></div>
+            <div class="card red"><div class="icon"><svg aria-hidden="true"><use href="#i-alert"></use></svg></div><h3>Backups are not optional</h3><p>The DB can be rebuilt from input. The attachments under <code>data/evidence/</code> cannot. Back up <code>input/</code> and <code>evidence/</code> encrypted, and test a restore once.</p></div>
+          </div>
+
+          <div class="callout info">
+            <span class="label">Already have a v7 install?</span>
+            <p>Treat it as a separate archive. Build the v8 tree next to it and leave the old data directory untouched until the new report reconciles. Do not migrate by copying a DB into <code>input/</code>.</p>
+          </div>
+        </section>
+
+        <section id="accounts">
+          <div class="section-kicker">Step 3</div>
+          <h2>Build the owner map, one folder at a time.</h2>
+          <p class="lede">Each folder under <code>input/accounts/</code> is one account. The folder name is the default id; the manifest inside is the source of truth. There is no central account list to keep in sync.</p>
+
+          <div class="grid-3">
+            <div class="card"><div class="icon"><svg aria-hidden="true"><use href="#i-wallet"></use></svg></div><h3>wallet</h3><p>On-chain ownership. Needs a descriptor pair or an xpub shorthand plus fingerprint.</p></div>
+            <div class="card teal"><div class="icon"><svg aria-hidden="true"><use href="#i-bank"></use></svg></div><h3>bank</h3><p>EUR statements and an optional hand-asserted balance. Statement rows are evidence, never tax pool input.</p></div>
+            <div class="card red"><div class="icon"><svg aria-hidden="true"><use href="#i-card"></use></svg></div><h3>credit_card</h3><p>Same statement shape as a bank, but treated as a negative liability in the overview.</p></div>
+          </div>
+          <div class="grid-2">
+            <div class="card blue"><div class="icon"><svg aria-hidden="true"><use href="#i-exchange"></use></svg></div><h3>exchange</h3><p>Kraken ledgers and trades. Feeds the manual CSV that drives the v8 tax report.</p></div>
+            <div class="card green"><div class="icon"><svg aria-hidden="true"><use href="#i-broker"></use></svg></div><h3>broker</h3><p>Holdings and values for the overview. Informational only; no Belgian stock tax logic yet.</p></div>
+          </div>
+
+          <div class="callout">
+            <span class="label">Naming rule</span>
+            <p>Use a stable id such as <code>ledger-main</code>, <code>kraken</code>, <code>kbc-checking</code>. Avoid spaces, dates and <code>wallet1</code>. The id appears in URLs and report references; renaming later is possible but creates a new account identity.</p>
+          </div>
+
+          <h3>Four manifests to copy</h3>
+          <div class="grid-2">
+            <div class="card">
+              <h4>Wallet — descriptor files</h4>
+              <p>Best for multisig and for Sparrow exports that include both chains. The loader auto-detects <code>receive.txt</code>.</p>
+              <pre><span class="c"># accounts/ledger-main/account.toml</span>
+kind = "wallet"
+label = "Ledger main"
+network = "mainnet"
+gap_limit = 200
+descriptor_receive_file = "receive.txt"
+descriptor_change_file = "change.txt"
+labels_file = "labels.jsonl"
+tags = ["cold-storage"]</pre>
+            </div>
+            <div class="card">
+              <h4>Wallet — xpub shorthand</h4>
+              <p>Fine for simple single-sig. The fingerprint is required; <code>purpose</code> defaults to 84 (BIP84).</p>
+              <pre><span class="c"># accounts/sparrow-savings/account.toml</span>
+kind = "wallet"
+label = "Sparrow savings"
+network = "mainnet"
+xpub = "zpub..."
+fingerprint = "73c5da0a"
+purpose = 84
+gap_limit = 200</pre>
+            </div>
+            <div class="card">
+              <h4>Bank and credit card</h4>
+              <p>Statements are auto-discovered under <code>statements/</code>. The balance is an assertion with a date, not a computed number.</p>
+              <pre><span class="c"># accounts/kbc-checking/account.toml</span>
+kind = "bank"
+label = "KBC checking"
+profile = "kbc-bankaccount"
+currency = "EUR"
+[[balances]]
+amount_eur = "12500.00"
+as_of = "2023-12-31"
+note = "Closing balance"</pre>
+            </div>
+            <div class="card">
+              <h4>Exchange and broker</h4>
+              <p>Kraken needs both files. Broker holdings stay informational.</p>
+              <pre><span class="c"># accounts/kraken/account.toml</span>
+kind = "exchange"
+label = "Kraken"
+exchange = "kraken"
+ledgers = ["ledgers.csv"]
+trades = ["trades.csv"]
+
+<span class="c"># accounts/degiro/account.toml</span>
+kind = "broker"
+label = "DEGIRO"
+[[holdings]]
+symbol = "IWDA"
+quantity = "25"
+value_eur = "2125.00"</pre>
+            </div>
+          </div>
+          <p class="small">The <code>id = "..."</code> key can override the folder name. Use it only when the folder name cannot be stable. Tags are optional and inherited by every holding of that account.</p>
+        </section>
+
+        <section id="wallets">
+          <div class="section-kicker">Step 4</div>
+          <h2>Load the chain side: descriptors, not addresses.</h2>
+          <p class="lede">A list of addresses is not an ownership model. Export the wallet descriptor from Sparrow, Bitcoin Core or your signer, and let utxoproof derive and register every script for the account.</p>
+
+          <div class="split">
+            <div>
+              <h4>What to export</h4>
+              <ul>
+                <li><strong>Single-sig:</strong> the account xpub plus its master fingerprint and purpose, or the full descriptor.</li>
+                <li><strong>Multisig:</strong> both receive and change descriptors, including all cosigner xpubs and the checksum.</li>
+                <li><strong>Multipath:</strong> a single descriptor pair using <code>&lt;0;1&gt;</code> is accepted; explicit receive/change files are clearer.</li>
+                <li><strong>One folder per descriptor set.</strong> Two BIP84 accounts from the same seed are two wallets, not one.</li>
+              </ul>
+            </div>
+            <div>
+              <h4>What to check before syncing</h4>
+              <ul>
+                <li>The network is <code>mainnet</code> (or the matching testnet).</li>
+                <li>The descriptor includes the origin fingerprint and path.</li>
+                <li>Receive and change descriptors belong to the same wallet.</li>
+                <li>No other account derives the same scripts. Duplicate scripts are a hard error, never a silent double count.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="card"><div class="icon"><svg aria-hidden="true"><use href="#i-key"></use></svg></div><h3>Never private keys</h3><p>Export the <em>watch-only</em> output descriptor. If the export includes an <code>xprv</code>, stop and re-export. utxoproof never needs spending authority.</p></div>
+            <div class="card teal"><div class="icon"><svg aria-hidden="true"><use href="#i-link"></use></svg></div><h3>Labels are not ownership</h3><p>BIP329 labels are imported and displayed. They do not turn an address into yours, and they never change tax treatment. Ownership comes from the derived script registry.</p></div>
+          </div>
+
+          <h3>Connect Electrum</h3>
+          <p>Electrum is the primary chain backend. Bitcoin Core remains optional for diagnosis or fallback. Put the endpoint in <code>input/utxoproof.toml</code>:</p>
+          <pre>[chain]
+backend = "electrum"
+network = "mainnet"
+electrum_url = "ssl://127.0.0.1:50002"
+electrum_ca_file = ""          <span class="c"># path to your server's CA, if private</span></pre>
+          <div class="callout">
+            <span class="label">First sync, old wallet</span>
+            <p>The importer batches scripthash histories and extends the gap limit as activity reaches the edge. If the first sync misses history, or you changed descriptors, rerun with <code>--force-rescan</code>. It clears and rebuilds the local chain tables; it does not touch your source files.</p>
+          </div>
+
+          <h3>BIP329 labels</h3>
+          <p>Put a Sparrow/Electrum <code>labels.jsonl</code> in the wallet folder. Supported label types are <code>tx</code>, <code>addr</code>, <code>output</code> and <code>input</code>. Imported labels are replaced on re-import; user labels survive. A label is shown beside the output in account and provenance pages — that is all it does.</p>
+          <pre><span class="p">$</span> utxoproof label --account ledger-main --type output \
+    --ref &lt;txid&gt;:0 --label "cold storage"</pre>
+        </section>
+
+        <section id="fiat-side">
+          <div class="section-kicker">Step 5</div>
+          <h2>Load the fiat side without confusing evidence with tax input.</h2>
+          <p class="lede">Banks, cards, exchanges and brokers each tell a different part of the story. The most important distinction: bank rows are evidence for fiat-leg review, while exchange trades feed the BTC cost-basis pool.</p>
+
+          <h3>Bank and credit-card accounts</h3>
+          <p>Put statement CSVs under the account folder and set the matching profile. The default pattern is <code>statements/**/*.csv</code>; you can set <code>statements</code> explicitly if your export layout differs.</p>
+          <div class="split">
+            <div>
+              <h4>Bank</h4>
+              <pre><span class="c"># accounts/kbc-checking/account.toml</span>
+kind = "bank"
+label = "KBC checking"
+profile = "kbc-bankaccount"
+currency = "EUR"
+[[balances]]
+amount_eur = "12500.00"
+as_of = "2023-12-31"
+note = "Closing balance"</pre>
+            </div>
+            <div>
+              <h4>Credit card</h4>
+              <pre><span class="c"># accounts/kbc-visa/account.toml</span>
+kind = "credit_card"
+label = "KBC Visa"
+profile = "kbc-creditcard"
+currency = "EUR"
+[[balances]]
+amount_eur = "-420.00"       <span class="c"># owed, not an asset</span>
+as_of = "2023-12-31"</pre>
+            </div>
+          </div>
+          <div class="callout info">
+            <span class="label">Partial statements are not balances</span>
+            <p>A statement can prove flows without giving an opening balance. Use <code>[[balances]]</code> only when you have a dated figure; put the source in <code>note</code>. The overview labels a hand-asserted figure as such. Bank rows never enter the BTC pool.</p>
+          </div>
+          <p>The current bank profiles cover common Belgian exports, including KBC bank and card. Other shapes are best-effort: inspect the first converted rows in the bank review page before trusting a full year. Non-EUR rows without a rate abort the parse rather than guessing.</p>
+
+          <h3>Kraken: two files, one account</h3>
+          <p>Export <strong>ledgers.csv</strong> and <strong>trades.csv</strong> for the full period and keep them together. The ledger records movements; the trades file supplies execution prices and margin flags. The runner merges them into <code>imports/manual.csv</code> and the tax report.</p>
+          <pre><span class="c"># accounts/kraken/account.toml</span>
+kind = "exchange"
+label = "Kraken"
+exchange = "kraken"
+ledgers = ["ledgers.csv"]
+trades = ["trades.csv"]</pre>
+          <div class="callout danger">
+            <span class="label">Current v8 limit</span>
+            <p>Exchange account folders currently support <strong>Kraken only</strong>. Coinbase, Binance and Bisq histories can be converted with <code>utxoproof import --type ...</code> and used through the legacy report path, but they do not yet produce a v8 exchange account page. Do not label a non-Kraken export as Kraken to force it through.</p>
+          </div>
+
+          <h3>Broker accounts are informational</h3>
+          <p>Broker holdings show up in the owner overview so the picture is complete. They do not enter BTC cost basis, disposal math, KYC propagation or the Belgian Bitcoin classifier. Belgian stock-tax rules are not implemented; keep broker statements as evidence and treat the page as a reminder, not a tax calculation.</p>
+        </section>
+
+        <section id="validate">
+          <div class="section-kicker">Step 6</div>
+          <h2>Validate the tree before you sync.</h2>
+          <p class="lede"><code>discover</code> reads every manifest, derives scripts, parses statements and labels, checks for duplicate ownership, and writes nothing. This is where you want to find the typo — not after a two-hour sync.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div>
+                <h4>Offline discovery</h4>
+                <p>No database, no network. It reports accounts, warnings and hard errors.</p>
+                <pre><span class="p">$</span> utxoproof discover --input ~/utxoproof-data/input</pre>
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <h4>Machine-readable discovery</h4>
+                <p>Useful when you want to script a check or diff the account list between iterations.</p>
+                <pre><span class="p">$</span> utxoproof discover --input ~/utxoproof-data/input --json</pre>
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <h4>Only then ping the backend</h4>
+                <p><code>--online</code> checks that the configured Electrum or Core endpoint is reachable. It does not replace the offline checks.</p>
+                <pre><span class="p">$</span> utxoproof discover --input ~/utxoproof-data/input --online</pre>
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <h4>Inspect the run plan</h4>
+                <p>A plan names every selected step and changes nothing. If a step is unexpectedly skipped, fix the tree or the flags before running.</p>
+                <pre><span class="p">$</span> utxoproof run --input ~/utxoproof-data/input \
+    --data-dir ~/utxoproof-data --plan</pre>
+              </div>
+            </div>
+          </div>
+
+          <h3>Stop rules</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>If discover says…</th><th>It usually means</th><th>Do this</th></tr></thead>
+              <tbody>
+                <tr><td><code>derive the same script</code></td><td>The same xpub or descriptor is in two account folders.</td><td>Remove the duplicate account. Never let two folders claim the same output.</td></tr>
+                <tr><td><code>descriptor/derivation error</code></td><td>The descriptor is truncated, has a bad checksum, or the network is wrong.</td><td>Re-export from the wallet. Do not hand-edit the checksum.</td></tr>
+                <tr><td><code>no statement CSV files matched</code></td><td>The bank/card folder has no CSV under its statement pattern.</td><td>Add the statements or set <code>statements</code> explicitly.</td></tr>
+                <tr><td><code>wallet needs descriptors or xpub</code></td><td>The wallet manifest has no ownership source.</td><td>Export the watch-only descriptor or add <code>xpub</code> + <code>fingerprint</code>.</td></tr>
+                <tr><td><code>exchange must be one of kraken</code></td><td>An unsupported exchange manifest.</td><td>Use the legacy <code>import</code> path for that source, or wait for a v8 adapter.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout good">
+            <span class="label">Checkpoint</span>
+            <p>Offline discovery has <strong>zero errors</strong>, <code>--online</code> reaches the backend, and the plan lists the steps you expect. Now you are allowed to touch the network.</p>
+          </div>
+        </section>
+
+        <section id="pilot">
+          <div class="section-kicker">Step 7</div>
+          <h2>Pilot one slice. Then scale in rings.</h2>
+          <p class="lede">The high-volume failure mode is a big-bang import: ten wallets, eight years and five statement formats at once. Build one slice that exercises each code path, prove it end to end, and only then add the rest.</p>
+          <figure class="diagram">
+            <img src="images/rollout.svg" width="1200" height="780" alt="A five-step rollout ladder: pilot slice, validate, offline run, live sync and reconcile, then scale in rings." loading="lazy">
+            <figcaption><strong>Figure 3</strong> Each rung is a checkpoint. The pilot tree can be thrown away; the habits transfer to the full tree.</figcaption>
+          </figure>
+
+          <div class="grid-2">
+            <div class="card"><div class="icon"><svg aria-hidden="true"><use href="#i-folder"></use></svg></div><h3>Pilot slice</h3><p>One wallet, one exchange, one bank statement, one tax year. Enough to exercise sync, import, report, bank matching and evidence.</p></div>
+            <div class="card teal"><div class="icon"><svg aria-hidden="true"><use href="#i-check"></use></svg></div><h3>Acceptance</h3><p>Offline report looks sane, live sync reconciles to zero, and the tax totals match your own arithmetic for that year.</p></div>
+          </div>
+
+          <div class="steps">
+            <div class="step">
+              <div>
+                <h4>Build the pilot tree separately</h4>
+                <p>Copy one wallet folder, one exchange folder and one bank folder into a fresh root. Point <code>UTXOPROOF_DATA_DIR</code> at a pilot folder so experiments never touch the filing DB.</p>
+                <pre><span class="p">$</span> export UTXOPROOF_DATA_DIR=~/utxoproof-pilot
+<span class="p">$</span> mkdir -p "$UTXOPROOF_DATA_DIR/input/accounts"</pre>
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <h4>Prove the imports offline</h4>
+                <p>No chain sync, no evidence ZIP. Inspect <code>imports/manual.csv</code>, the bank review and the tax report. This catches parser surprises before the network.</p>
+                <pre><span class="p">$</span> utxoproof discover --input "$UTXOPROOF_DATA_DIR/input"
+<span class="p">$</span> utxoproof run --input "$UTXOPROOF_DATA_DIR/input" \
+    --data-dir "$UTXOPROOF_DATA_DIR" --offline --no-zip</pre>
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <h4>Add the chain, then reconcile</h4>
+                <p>Point the config at your Electrum server, run the same tree without <code>--offline</code>, and reconcile every wallet before looking at tax numbers.</p>
+                <pre><span class="p">$</span> utxoproof discover --input "$UTXOPROOF_DATA_DIR/input" --online
+<span class="p">$</span> utxoproof run --input "$UTXOPROOF_DATA_DIR/input" \
+    --data-dir "$UTXOPROOF_DATA_DIR" --no-zip
+<span class="p">$</span> utxoproof reconcile --input "$UTXOPROOF_DATA_DIR/input" \
+    --db "$UTXOPROOF_DATA_DIR/utxoproof.db"</pre>
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <h4>Scale by rings</h4>
+                <p>Add one wallet or one source at a time, rerun, and repeat the same checks. Keep the data dir; the input tree is the source of truth, so adding an account never requires rebuilding the world.</p>
+                <pre><span class="p">$</span> utxoproof run --input "$UTXOPROOF_DATA_DIR/input" \
+    --data-dir "$UTXOPROOF_DATA_DIR" --only labels,sync,portfolio</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout">
+            <span class="label">If the pilot fails</span>
+            <p>Stop and fix the source. Do not hand-edit <code>imports/manual.csv</code> or the generated bank rows; they are regenerated on every run. If a source format is unsupported, keep it as evidence and use the legacy path rather than inventing a manifest that lies about it.</p>
+          </div>
+        </section>
+
+        <section id="full-run">
+          <div class="section-kicker">Step 8</div>
+          <h2>The full run: one command, one data directory.</h2>
+          <p class="lede">Once the tree validates and the pilot reconciles, run the real thing. The command is idempotent: it imports labels, syncs wallets, parses statements, builds the tax report and renders the account dashboard.</p>
+
+          <pre><span class="p">$</span> utxoproof discover --input ~/utxoproof-data/input --online
+<span class="p">$</span> utxoproof run --input ~/utxoproof-data/input \
+    --data-dir ~/utxoproof-data --year 2023</pre>
+          <p>Use <code>--no-zip</code> while iterating; drop it for the run you intend to archive. Use <code>--price</code> or <code>--as-of</code> only when you deliberately want an override; otherwise the bundled daily price history is used offline.</p>
+
+          <h3>What the run writes</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Path</th><th>What it is</th><th>Keep it?</th></tr></thead>
+              <tbody>
+                <tr><td><code>imports/manual.csv</code></td><td>Merged exchange trades in the neutral manual-CSV shape.</td><td>Regenerated; useful for diagnosis.</td></tr>
+                <tr><td><code>imports/ledgers.csv</code> / <code>trades.csv</code></td><td>Merged Kraken sources, with duplicate refids rejected.</td><td>Regenerated.</td></tr>
+                <tr><td><code>imports/bank-rows.csv</code></td><td>Parsed bank/card rows with source line references.</td><td>Regenerated; evidence is in the ZIP.</td></tr>
+                <tr><td><code>utxoproof.db</code></td><td>Local SQLite graph: accounts, scripts, txs, outputs, labels, links.</td><td>Reproducible; back it up if convenient.</td></tr>
+                <tr><td><code>reports/overview/overview.html</code></td><td>Owner-wide dashboard: allocation, fiat, KYC, coverage.</td><td>Yes, it is the entry point.</td></tr>
+                <tr><td><code>reports/entities/*.html</code></td><td>One page per account with balances, UTXOs, labels and links.</td><td>Yes, part of the archive.</td></tr>
+                <tr><td><code>reports/provenance/*.html</code></td><td>Per-UTXO saga: funding, fees, bank/exchange links, attachments.</td><td>Yes.</td></tr>
+                <tr><td><code>reports/bank/bank.html</code></td><td>Fiat-leg matching: exact, approximate and unmatched rows.</td><td>Yes, review it.</td></tr>
+                <tr><td><code>reports/&lt;year&gt;/report.html</code></td><td>Tax report with gains, classification and caveats.</td><td>Yes, the filing artifact.</td></tr>
+                <tr><td><code>reports/&lt;year&gt;/fullreport.html</code></td><td>Printable report combining every section.</td><td>Yes, for the archive.</td></tr>
+                <tr><td><code>reports/&lt;year&gt;/utxoproof_evidence_&lt;year&gt;_&lt;stamp&gt;.zip</code></td><td>Source files, intermediates, attachments, report and hash manifest.</td><td>Yes, the audit bundle.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="grid-2">
+            <div class="card"><div class="icon"><svg aria-hidden="true"><use href="#i-calendar"></use></svg></div><h3>Many years</h3><p>Use the same DB and run <code>--year</code> one year at a time. Keep each year's report and ZIP. The account and overview pages are refreshed on each run; the database stays cumulative.</p></div>
+            <div class="card teal"><div class="icon"><svg aria-hidden="true"><use href="#i-layers"></use></svg></div><h3>Partial reruns</h3><p><code>--only labels,sync,exchanges,banks,report,portfolio</code> selects steps. After adding one wallet: <code>--only labels,sync,portfolio</code>. After changing a statement: <code>--only banks,portfolio</code>.</p></div>
+          </div>
+
+          <div class="callout info">
+            <span class="label">One writer at a time</span>
+            <p>Do not run two utxoproof commands against the same data directory concurrently. SQLite and the generated reports are not designed for parallel writers. Sequential runs are the safe path.</p>
+          </div>
+        </section>
+
+        <section id="reconcile">
+          <div class="section-kicker">Step 9</div>
+          <h2>Reconcile, review, and only then file.</h2>
+          <p class="lede">A report is not done because it renders. It is done when the on-chain balances reconcile to the server and the numbers agree with your own arithmetic for the year.</p>
+
+          <pre><span class="p">$</span> utxoproof reconcile --input ~/utxoproof-data/input \
+    --db ~/utxoproof-data/utxoproof.db</pre>
+          <p>The expected result is <code>RECONCILED (gap 0)</code>. A nonzero gap means stop. Rerun sync, then <code>--force-rescan</code>, then check that the descriptor, network and Electrum endpoint all match the wallet. Reconcile compares DB-owned unspent outputs against the server's scripthash balances, so a silent missed spend shows up here.</p>
+
+          <figure class="diagram">
+            <img src="images/reports-map.svg" width="1200" height="700" alt="A report map: one reports folder fans out to overview, account pages, provenance, bank review, tax report and evidence ZIP." loading="lazy">
+            <figcaption><strong>Figure 4</strong> Start at the overview, drill into an account or UTXO, then open the bank review and the year report. The evidence ZIP closes the loop.</figcaption>
+          </figure>
+
+          <p class="small">The previews below open the synthetic demo, not real holdings. They show the shape of each page; your text and figures will differ.</p>
+          <div class="preview-grid">
+            <a class="preview" href="../v8/overview/overview.html">
+              <div class="shot">
+                <div class="chrome"><i></i><i></i><i></i></div>
+                <div class="mini"><span class="bar" style="height:54%"></span><span class="bar" style="height:78%"></span><span class="bar" style="height:42%"></span><span class="bar" style="height:88%"></span><span class="bar" style="height:63%"></span></div>
+              </div>
+              <div class="body"><h4>Overview</h4><p>Allocation, fiat, KYC and coverage across every account.</p><span class="open">Open demo →</span></div>
+            </a>
+            <a class="preview" href="../v8/entities/ledger-main.html">
+              <div class="shot">
+                <div class="chrome"><i></i><i></i><i></i></div>
+                <div class="mini"><div class="list"><span></span><span></span><span></span><span></span></div><div class="donut"></div></div>
+              </div>
+              <div class="body"><h4>Account page</h4><p>Balances, UTXOs, labels and a link to every provenance saga.</p><span class="open">Open demo →</span></div>
+            </a>
+            <a class="preview" href="../v8/bank/bank.html">
+              <div class="shot">
+                <div class="chrome"><i></i><i></i><i></i></div>
+                <div class="mini"><div class="list"><span></span><span></span><span></span></div><div class="donut"></div></div>
+              </div>
+              <div class="body"><h4>Bank review</h4><p>Matched and unmatched fiat legs, with the source row kept.</p><span class="open">Open demo →</span></div>
+            </a>
+            <a class="preview" href="../v8/2023/report.html">
+              <div class="shot dark">
+                <div class="chrome"><i></i><i></i><i></i></div>
+                <div class="mini"><div class="doc"></div></div>
+              </div>
+              <div class="body"><h4>Tax report</h4><p>Gains, cost basis, classification and the caveats that matter.</p><span class="open">Open demo →</span></div>
+            </a>
+          </div>
+
+          <h3>Evidence: the part a reviewer opens</h3>
+          <p>The year ZIP contains the account-folder sources, merged intermediates, attachments, the report and a hash manifest. The root <code>input/utxoproof.toml</code> is deliberately excluded because it may contain RPC credentials. Open the ZIP once yourself, verify <code>manifest.json</code>, and check that the source paths are the ones you expect.</p>
+          <pre><span class="p">$</span> utxoproof attach --file ~/withdrawal-mail.png \
+    --tx &lt;txid&gt; --note "Kraken withdrawal confirmation" --year 2023
+<span class="p">$</span> utxoproof attach --file ~/annual-statement.pdf \
+    --note "Bank 2023 totals"</pre>
+          <p>Attachments are content-hashed and stored under <code>data/evidence/</code>; originals stay untouched. Re-attaching identical content is a no-op. This is also why <code>evidence/</code> belongs in your backup, while the DB can be rebuilt.</p>
+        </section>
+
+        <section id="scale">
+          <div class="section-kicker">Step 10</div>
+          <h2>Scaling playbook for a lot of data.</h2>
+          <p class="lede">The tool is built for one owner with many accounts and many years. These are the habits that keep a large archive reproducible instead of fragile.</p>
+
+          <div class="grid-2">
+            <div class="card"><div class="icon"><svg aria-hidden="true"><use href="#i-wallet"></use></svg></div><h3>Many wallets: one folder per descriptor set</h3><p>Add a wallet, run <code>--only labels,sync,portfolio</code>, reconcile, then add the next. Do not paste the same xpub into two folders to “see it twice”; that is a hard error. If a seed has multiple BIP84 accounts, each account gets its own folder.</p></div>
+            <div class="card teal"><div class="icon"><svg aria-hidden="true"><use href="#i-calendar"></use></svg></div><h3>Many years: one cumulative DB</h3><p>Keep the DB and run one tax year at a time. The report year changes; the graph does not. Archive each year's <code>report.html</code>, <code>fullreport.html</code> and evidence ZIP together.</p></div>
+            <div class="card blue"><div class="icon"><svg aria-hidden="true"><use href="#i-bank"></use></svg></div><h3>Many statements: let the folder discover</h3><p>Keep statements under the account's <code>statements/</code> tree, ideally by year. The default glob is recursive and deterministic. If you use explicit patterns, list them in <code>statements</code> and rerun discovery.</p></div>
+            <div class="card red"><div class="icon"><svg aria-hidden="true"><use href="#i-lock"></use></svg></div><h3>Privacy: self-host the chain backend</h3><p>A public Electrum server sees every address you query. Use a server you control, or one you trust. The public smoke test uses a deliberately public spec-vector xpub; never point it at your real wallet.</p></div>
+            <div class="card green"><div class="icon"><svg aria-hidden="true"><use href="#i-drive"></use></svg></div><h3>Backup: input + evidence, not just the DB</h3><p>The SQLite graph is reproducible from the input tree. Attachments under <code>data/evidence/</code> are not. Back up both, encrypt the archive, and test a restore before filing season.</p></div>
+            <div class="card"><div class="icon"><svg aria-hidden="true"><use href="#i-chart"></use></svg></div><h3>Performance: offline iterate, online sync once</h3><p>Use <code>--offline --no-zip</code> for report and parser iteration. Use the live run when you are ready to reconcile. Large wallet histories can take time; a local Electrum server is usually the biggest speed-up.</p></div>
+          </div>
+
+          <div class="callout good">
+            <span class="label">The ring model</span>
+            <p><strong>Ring 1:</strong> one wallet, one exchange, one statement, one year. <strong>Ring 2:</strong> all wallets for that year. <strong>Ring 3:</strong> all fiat sources and all years. <strong>Ring 4:</strong> attachments, full evidence bundle, archival backup. Do not start Ring 3 because Ring 1 rendered a page.</p>
+          </div>
+        </section>
+
+        <section id="limits">
+          <div class="section-kicker">Step 11</div>
+          <h2>Honest limits, before you trust a number.</h2>
+          <p class="lede">A good guide says what the tool does not do. These are current boundaries, not aspirations.</p>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Area</th><th>Current behaviour</th><th>What to do</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Exchange folders</strong></td><td>Kraken only in v8 account manifests.</td><td>Use <code>utxoproof import</code> and the legacy report path for Coinbase, Binance or Bisq until an adapter lands.</td></tr>
+                <tr><td><strong>Bank statements</strong></td><td>EUR only. Profiles are alias-driven and some shapes are best-effort.</td><td>Inspect the bank review for the first statement of each profile. Non-EUR rows without a rate abort rather than guess.</td></tr>
+                <tr><td><strong>Broker holdings</strong></td><td>Informational only; no Belgian stock tax.</td><td>Keep statements as evidence; do not treat the overview as a stock-tax report.</td></tr>
+                <tr><td><strong>Ownership</strong></td><td>Descriptors and derived scripts only; labels never own.</td><td>Export watch-only descriptors. Duplicate scripts across accounts are a hard error.</td></tr>
+                <tr><td><strong>Tax classification</strong></td><td>Heuristic scores plus your self-reported flags; not professional advice.</td><td>Review the classifier caveats in the report. Do not use a flag to “make the number nicer”.</td></tr>
+                <tr><td><strong>Scope</strong></td><td>One taxpayer per tree. No multi-owner consolidation, no custody, no trading.</td><td>Give each taxpayer their own input tree and data directory. Keep seeds and private keys out.</td></tr>
+                <tr><td><strong>Balances</strong></td><td>Partial statements cannot produce a balance.</td><td>Assert a dated balance only when you can point to its source.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout neutral">
+            <span class="label">Not tax advice</span>
+            <p>utxoproof produces reproducible calculations and evidence. It does not replace an accountant, a tax lawyer or your own review. The demo pages and this guide use synthetic data.</p>
+          </div>
+        </section>
+
+        <section id="troubleshoot">
+          <div class="section-kicker">Step 12</div>
+          <h2>Troubleshooting the usual suspects.</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+              <tbody>
+                <tr><td><code>no valid accounts found</code></td><td>No <code>accounts/*/account.toml</code> under the input tree.</td><td>Check the path passed to <code>--input</code>; every account needs a manifest.</td></tr>
+                <tr><td><code>missing account.toml</code></td><td>A folder exists but is not an account.</td><td>Add the manifest or move the folder out of <code>accounts/</code>.</td></tr>
+                <tr><td><code>no statement CSV files matched</code></td><td>The bank/card folder has no CSV under the pattern.</td><td>Add statements or set <code>statements</code> explicitly; a bank folder without statements is invalid.</td></tr>
+                <tr><td><code>wallet needs descriptors or xpub</code></td><td>No ownership source in the wallet manifest.</td><td>Export a watch-only descriptor, or add <code>xpub</code> + <code>fingerprint</code> + <code>purpose</code>.</td></tr>
+                <tr><td><code>derive the same script</code></td><td>The same wallet is in two account folders.</td><td>Remove the duplicate. One output can have only one owner.</td></tr>
+                <tr><td>Zero UTXOs after sync</td><td>Wrong network, wrong descriptor, server not reachable, or history missed.</td><td>Run <code>discover --online</code>, check <code>network</code>, then <code>run --force-rescan</code>.</td></tr>
+                <tr><td>Reconcile shows a gap</td><td>Stale DB, missed spend, wrong server, or descriptor mismatch.</td><td>Rerun sync, then <code>--force-rescan</code>; inspect the account descriptor and server network.</td></tr>
+                <tr><td>Labels do not appear</td><td>Wrong file name, unsupported type, or account not imported.</td><td>Use <code>labels.jsonl</code> or set <code>labels_file</code>; remember labels are display only.</td></tr>
+                <tr><td>Bank rows do not change tax</td><td>By design: bank rows are evidence, not pool input.</td><td>Use exchange trades or a manual CSV for cost-basis flows.</td></tr>
+                <tr><td>Tax report has shortfalls</td><td>Missing buys or an opening position outside the imported history.</td><td>Run <code>utxoproof check</code>, find the gap, add the source. Never fabricate a buy to fill the pool.</td></tr>
+                <tr><td>Non-Kraken exchange fails</td><td>v8 exchange folders are Kraken-only.</td><td>Use <code>utxoproof import --type ...</code> and the legacy report path for now.</td></tr>
+                <tr><td>Pages demo is stale</td><td>The workflow did not run or Pages is not set to GitHub Actions.</td><td>Actions → “Demo reports” → re-run; check Pages source is GitHub Actions.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <details>
+            <summary>What does <code>--only</code> actually skip?</summary>
+            <div class="details-body">
+              <p>The six steps are <code>labels</code>, <code>sync</code>, <code>exchanges</code>, <code>banks</code>, <code>report</code> and <code>portfolio</code>. Skipping <code>sync</code> keeps the existing chain graph. Skipping <code>exchanges</code> reuses the existing imports. Skipping <code>report</code> still renders the portfolio, and vice versa. A plan (<code>--plan</code>) shows exactly what is selected.</p>
+            </div>
+          </details>
+          <details>
+            <summary>Why is my report year different from the file year?</summary>
+            <div class="details-body">
+              <p>The report year comes from <code>--year</code>, then <code>[reporting].tax_year</code>, then the latest year in the imported manual CSV. A manual override always wins. Use <code>--year</code> explicitly when producing a filing artifact so the filename and the tax year cannot drift.</p>
+            </div>
+          </details>
+          <details>
+            <summary>Can I edit the generated manual CSV?</summary>
+            <div class="details-body">
+              <p>Do not make it your source of truth. <code>imports/manual.csv</code> is regenerated from account folders, so edits disappear on the next run. If the conversion is wrong, fix the exchange export mapping or use the legacy <code>import</code> path and keep the original as evidence.</p>
+            </div>
+          </details>
+        </section>
+
+        <section id="checklist">
+          <div class="section-kicker">Step 13</div>
+          <h2>The printable checklist.</h2>
+          <p class="lede">Work top to bottom. Stop at any failed checkpoint. The goal is not to finish the archive today; it is to make the next run boring.</p>
+
+          <h3>Workspace</h3>
+          <ul class="checklist">
+            <li><input type="checkbox" id="c1"><label for="c1"><strong>Code and data are separate.</strong> The data root is outside the git checkout; <code>UTXOPROOF_DATA_DIR</code> points there.</label></li>
+            <li><input type="checkbox" id="c2"><label for="c2"><strong>Fresh data dir.</strong> No old v7 DB, no experiments. A rollback is one folder delete.</label></li>
+            <li><input type="checkbox" id="c3"><label for="c3"><strong>Config reviewed.</strong> Owner, chain backend, reporting year and communal surcharge are intentional.</label></li>
+            <li><input type="checkbox" id="c4"><label for="c4"><strong>Backup plan.</strong> <code>input/</code> and <code>evidence/</code> are backed up encrypted; a restore was tested.</label></li>
+          </ul>
+
+          <h3>Input tree</h3>
+          <ul class="checklist">
+            <li><input type="checkbox" id="c5"><label for="c5"><strong>One folder per account.</strong> Ids are stable, lowercase and URL-safe.</label></li>
+            <li><input type="checkbox" id="c6"><label for="c6"><strong>Wallets are watch-only.</strong> No seed phrases, no private keys, no <code>xprv</code>.</label></li>
+            <li><input type="checkbox" id="c7"><label for="c7"><strong>Descriptors are complete.</strong> Receive and change match; multisig includes all cosigners.</label></li>
+            <li><input type="checkbox" id="c8"><label for="c8"><strong>Labels are BIP329 JSONL</strong> in the wallet folder and scoped to that account.</label></li>
+            <li><input type="checkbox" id="c9"><label for="c9"><strong>Bank/card statements are under <code>statements/</code></strong> and the profile matches the export.</label></li>
+            <li><input type="checkbox" id="c10"><label for="c10"><strong>Kraken has both ledgers and trades.</strong> All years are present; refids are unique.</label></li>
+            <li><input type="checkbox" id="c11"><label for="c11"><strong>Broker holdings are informational.</strong> They are not expected in the BTC tax math.</label></li>
+          </ul>
+
+          <h3>Validate, pilot, file</h3>
+          <ul class="checklist">
+            <li><input type="checkbox" id="c12"><label for="c12"><strong><code>discover</code> offline is clean.</strong> Zero errors and no duplicate scripts.</label></li>
+            <li><input type="checkbox" id="c13"><label for="c13"><strong><code>discover --online</code> reaches the backend.</strong> The network and endpoint are right.</label></li>
+            <li><input type="checkbox" id="c14"><label for="c14"><strong><code>run --plan</code> is expected.</strong> The steps and selected actions match your intent.</label></li>
+            <li><input type="checkbox" id="c15"><label for="c15"><strong>Pilot offline run is sane.</strong> The report and imports make sense without chain data.</label></li>
+            <li><input type="checkbox" id="c16"><label for="c16"><strong>Pilot live run reconciles.</strong> <code>reconcile</code> says <code>gap 0</code>.</label></li>
+            <li><input type="checkbox" id="c17"><label for="c17"><strong>Tax totals match your arithmetic.</strong> One year is independently checked before scaling.</label></li>
+            <li><input type="checkbox" id="c18"><label for="c18"><strong>Full run includes the evidence ZIP.</strong> It opens; <code>manifest.json</code> verifies; root config is excluded.</label></li>
+            <li><input type="checkbox" id="c19"><label for="c19"><strong>Reports reviewed.</strong> Overview, account pages, provenance and bank review are all inspected.</label></li>
+            <li><input type="checkbox" id="c20"><label for="c20"><strong>Archive sealed.</strong> Report, full report, ZIP and a backup manifest are stored together.</label></li>
+          </ul>
+
+          <div class="final-cta">
+            <h2>You do not need all your data to start.</h2>
+            <p>You need one trustworthy slice: one wallet, one exchange, one statement, one year. Prove it, reconcile it, then let the archive grow without letting the story drift.</p>
+            <div class="hero-actions">
+              <a class="btn btn-primary" href="../v8/overview/overview.html">Open the live demo <span aria-hidden="true">↗</span></a>
+              <a class="btn btn-ghost" href="../docs/usage.html">Read the full reference</a>
+              <a class="btn btn-ghost" href="https://github.com/natashaklum/utxoproof">View the source <span aria-hidden="true">↗</span></a>
+            </div>
+          </div>
+        </section>
+      </article>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div>
+        <strong>utxoproof</strong> · getting started · v8 account workflow
+        <div class="fine">A local-first guide for self-custodians with a lot of history. Demo figures are synthetic; this is not tax advice. No analytics, no external assets, no network calls from this page.</div>
+      </div>
+      <div>
+        <a href="../index.html">Demo index</a> ·
+        <a href="../v8/overview/overview.html">Live v8 demo</a> ·
+        <a href="../docs/usage.html">User reference</a> ·
+        <a href="https://github.com/natashaklum/utxoproof">GitHub</a>
+        <div class="fine">Guide source: <code>docs/guide/</code> · build: <code>scripts/build_demo.py</code></div>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

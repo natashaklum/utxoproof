@@ -1,8 +1,9 @@
-"""Build the Pages demo site: HTML reports from fixtures + the v8 example.
+"""Build the Pages demo site: reports, v8 example and Getting Started guide.
 
-Usage: ``python scripts/build_demo.py --out site``. Reads only repo fixtures
-and ``examples/input_v8``; writes self-contained HTML (no external assets).
-The v8 demo runs offline and seeds a small deterministic chain graph.
+Usage: ``python scripts/build_demo.py --out site``. Reads only repo fixtures,
+``examples/input_v8`` and the static guide under ``docs/guide``; writes
+self-contained HTML (no external assets). The v8 demo runs offline and seeds a
+small deterministic chain graph.
 """
 
 from __future__ import annotations
@@ -205,16 +206,67 @@ def _build_v8_demo(out: Path) -> list[tuple[str, str]]:
 
 INDEX_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><title>utxoproof demo reports</title></head>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>utxoproof demo reports</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f7f4ee; color: #11161c;
+    font-family: "Inter", "Segoe UI", system-ui, sans-serif; line-height: 1.55; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 54px 22px 70px; }
+  .kicker { margin: 0 0 8px; color: #9a4d06; font-size: 11px; font-weight: 750;
+    letter-spacing: .12em; text-transform: uppercase; }
+  h1 { margin: 0 0 10px; font-family: Georgia, serif; font-weight: 600;
+    font-size: clamp(2.2rem, 6vw, 3.4rem); line-height: 1; letter-spacing: -.035em; }
+  .sub { max-width: 66ch; margin: 0 0 26px; color: #616b76; }
+  .guide-card { display: flex; flex-wrap: wrap; align-items: center;
+    justify-content: space-between; gap: 16px; margin: 26px 0 18px; padding: 22px 24px;
+    border-radius: 18px; color: #fff;
+    background: radial-gradient(circle at 90% 20%, rgba(247,147,26,.28), transparent 42%),
+      linear-gradient(135deg, #0b1220, #14243a);
+    box-shadow: 0 16px 40px rgba(17,22,28,.14); }
+  .guide-card strong { display: block; font-size: 18px; margin-bottom: 3px; }
+  .guide-card span { color: #b9c4d2; font-size: 13px; }
+  .guide-card a { display: inline-flex; align-items: center; gap: 7px;
+    padding: 10px 15px; border-radius: 10px; color: #16120b; text-decoration: none;
+    background: #f7931a; font-size: 13px; font-weight: 750; white-space: nowrap; }
+  .guide-card a:hover { background: #ffad3d; }
+  .demo-banner { background: #fff3cd; border: 2px solid #e8a13d;
+    border-radius: 10px; padding: 12px 16px; margin: 18px 0 28px;
+    font-weight: 700; text-align: center; color: #4e350b; }
+  h2 { margin: 30px 0 10px; font-size: 15px; letter-spacing: .08em;
+    text-transform: uppercase; color: #616b76; }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+  li a { display: block; padding: 11px 14px; border: 1px solid #e5dfd4;
+    border-radius: 10px; background: #fff; color: #11161c; text-decoration: none;
+    font-size: 14px; }
+  li a:hover { border-color: #c9c2b6; box-shadow: 0 6px 16px rgba(17,22,28,.06); }
+  .footer { margin-top: 34px; padding-top: 18px; border-top: 1px solid #e5dfd4;
+    color: #7a8491; font-size: 12px; }
+</style>
+</head>
 <body>
-<h1>utxoproof demo reports</h1>
+<div class="wrap">
+<p class="kicker">utxoproof</p>
+<h1>Demo reports</h1>
+<p class="sub">Synthetic reports generated offline from repo fixtures. Every page is dummy data:
+use them to inspect the shape of the output, not to infer real holdings or tax results.</p>
+<div class="guide-card">
+  <div><strong>New here, with a lot of history?</strong>
+    <span>Read the illustrated Getting Started guide: inventory, pilot,
+    reconcile, scale.</span></div>
+  <a href="guide/index.html">Read the guide <span aria-hidden="true">→</span></a>
+</div>
 <div class="demo-banner">DEMO \u2014 dummy data on every page. Not real.</div>
-<style>.demo-banner { background: #fff3cd; border: 2px solid #e8a13d;
-border-radius: 8px; padding: 0.8em 1em; margin: 1em 0;
-font-weight: bold; text-align: center; }</style>
+<h2>All reports</h2>
 <ul>
 {links}
 </ul>
+<p class="footer">Static HTML, no JavaScript. The v8 demo runs offline with a seeded chain graph;
+the older fixture reports are retained for comparison. Not tax advice.</p>
+</div>
 </body>
 </html>
 """
@@ -647,6 +699,7 @@ def main() -> int:
     for offset, (title, href) in enumerate(_build_v8_demo(out), start=2):
         links.insert(offset, f'<li><a href="{href}">{title}</a></li>')
 
+    _write_guide(out)
     _write_docs_page(out)
     if (out / "docs" / "usage.html").is_file():
         links.append('<li><a href="docs/usage.html">User guide (Slowstart)</a></li>')
@@ -657,18 +710,37 @@ def main() -> int:
     return 0
 
 
+def _write_guide(out: Path) -> None:
+    """Copy the hand-built Getting Started guide into the published site."""
+    source = ROOT / "docs" / "guide"
+    if not (source / "index.html").is_file():
+        return
+    shutil.copytree(source, out / "guide", dirs_exist_ok=True)
+
+
 def _write_docs_page(out: Path) -> None:
-    """Render docs/USAGE.md as site/docs/usage.html (needs markdown lib)."""
+    """Render docs/USAGE.md as site/docs/usage.html.
+
+    The illustrated Getting Started guide is static HTML; the deeper reference
+    needs ``markdown``. If the optional library is absent, keep a small local
+    pointer instead of a dangling nav link.
+    """
+    source = ROOT / "docs" / "USAGE.md"
     try:
         import markdown
     except ImportError:
-        return
-    source = ROOT / "docs" / "USAGE.md"
-    if not source.is_file():
-        return
-    body = markdown.markdown(
-        source.read_text(encoding="utf-8"), extensions=["tables", "fenced_code"]
-    )
+        body = (
+            "<h1>utxoproof user guide</h1>"
+            "<p>The full reference is available in the repository: "
+            '<a href="https://github.com/natashaklum/utxoproof/blob/main/docs/USAGE.md">'
+            "docs/USAGE.md</a>.</p>"
+        )
+    else:
+        if not source.is_file():
+            return
+        body = markdown.markdown(
+            source.read_text(encoding="utf-8"), extensions=["tables", "fenced_code"]
+        )
     css = (
         "body{font-family:sans-serif;max-width:900px;margin:2em auto;"
         "padding:0 1em;color:#222;}"
@@ -677,14 +749,19 @@ def _write_docs_page(out: Path) -> None:
         ".demo-banner{background:#fff3cd;border:2px solid #e8a13d;"
         "border-radius:8px;padding:0.8em 1em;margin:1em 0;"
         "font-weight:bold;text-align:center;}"
+        ".guide-banner{background:#e2f5f0;border:1px solid #b7e4c8;"
+        "border-radius:8px;padding:0.8em 1em;margin:1em 0;}"
     )
     banner = (
         '<div class="demo-banner">DEMO \u2014 docs for the demo site; '
         "commands shown act on your own files.</div>"
+        '<div class="guide-banner">New to the v8 workflow with a lot of data? '
+        '<a href="../guide/index.html">Read the illustrated Getting Started guide</a>.</div>'
     )
     page = [
         "<!DOCTYPE html>",
         '<html lang="en"><head><meta charset="utf-8">',
+        '<meta name="viewport" content="width=device-width, initial-scale=1">',
         "<title>utxoproof user guide</title>",
         f"<style>{css}</style></head><body>",
         banner,

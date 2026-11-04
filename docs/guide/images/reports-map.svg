@@ -1,0 +1,162 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" role="img" aria-labelledby="mapTitle mapDesc">
+  <title id="mapTitle">The report map produced by one run</title>
+  <desc id="mapDesc">A central reports folder fans out to overview, account pages, provenance, bank review, tax report and evidence ZIP. Start at the overview and drill down.</desc>
+  <defs>
+    <filter id="mapShadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#11161c" flood-opacity=".08"/>
+    </filter>
+    <linearGradient id="mapHub" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#17263b"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="700" rx="26" fill="#fbfaf7"/>
+  <rect x="1" y="1" width="1198" height="698" rx="25" fill="none" stroke="#e5dfd4"/>
+
+  <!-- hub -->
+  <g filter="url(#mapShadow)">
+    <rect x="50" y="220" width="270" height="280" rx="24" fill="url(#mapHub)"/>
+    <circle cx="88" cy="258" r="17" fill="#f7931a"/>
+    <path d="M81 254h11a5 5 0 0 1 0 10H81zm0 5h13m-13 0v6h12a5 5 0 0 0 0-10" fill="none" stroke="#0b1220" stroke-width="1.7" stroke-linecap="round"/>
+    <text x="116" y="264" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="20" font-weight="750" fill="#ffffff">reports/</text>
+    <text x="72" y="298" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="13" fill="#b9c4d2">one run · one local ledger</text>
+    <rect x="72" y="318" width="226" height="1" fill="#ffffff" opacity=".12"/>
+    <g font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="12.5" fill="#d8e2ee">
+      <text x="72" y="348">overview + account pages</text>
+      <text x="72" y="374">provenance + bank review</text>
+      <text x="72" y="400">tax + full report</text>
+      <text x="72" y="426">evidence ZIP + manifest</text>
+    </g>
+    <rect x="72" y="458" width="188" height="26" rx="13" fill="#ffffff" opacity=".08"/>
+    <text x="85" y="475" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="10" fill="#93c5fd">static HTML · no JavaScript</text>
+  </g>
+
+  <!-- fan connectors -->
+  <g fill="none" stroke="#c9c2b6" stroke-width="1.5" stroke-dasharray="5 7">
+    <path d="M320 360 C338 360 340 132 360 132"/>
+    <path d="M320 360 C338 360 340 327 360 327"/>
+    <path d="M320 360 C338 360 340 522 360 522"/>
+    <path d="M320 360 H335 V30 H780 V132"/>
+    <path d="M320 360 H335 V425 H780 V327"/>
+    <path d="M320 360 H335 V630 H780 V522"/>
+  </g>
+
+  <!-- card 1 overview -->
+  <g filter="url(#mapShadow)">
+    <rect x="360" y="50" width="390" height="165" rx="19" fill="#ffffff"/>
+    <rect x="380" y="70" width="74" height="22" rx="11" fill="#fff1dc"/>
+    <text x="391" y="85" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="10" font-weight="750" fill="#9a4d06">START HERE</text>
+    <text x="380" y="118" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="18" font-weight="750" fill="#11161c">Overview</text>
+    <text x="380" y="138" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="12" fill="#616b76">owner-wide allocation, fiat, KYC and coverage</text>
+    <g>
+      <rect x="620" y="86" width="100" height="9" rx="4.5" fill="#f0ece4"/>
+      <rect x="620" y="86" width="72" height="9" rx="4.5" fill="#f7931a"/>
+      <rect x="620" y="104" width="100" height="9" rx="4.5" fill="#f0ece4"/>
+      <rect x="620" y="104" width="42" height="9" rx="4.5" fill="#0f766e"/>
+      <rect x="620" y="122" width="100" height="9" rx="4.5" fill="#f0ece4"/>
+      <rect x="620" y="122" width="58" height="9" rx="4.5" fill="#1d4ed8"/>
+    </g>
+    <text x="380" y="188" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="10.5" fill="#0f766e">overview/overview.html</text>
+    <path d="M720 180 H732" stroke="#0f766e" stroke-width="1.5"/>
+    <path d="M727 175 L733 180 L727 185" fill="none" stroke="#0f766e" stroke-width="1.5"/>
+  </g>
+
+  <!-- card 2 accounts -->
+  <g filter="url(#mapShadow)">
+    <rect x="780" y="50" width="390" height="165" rx="19" fill="#ffffff"/>
+    <text x="800" y="82" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="18" font-weight="750" fill="#11161c">Account pages</text>
+    <text x="800" y="102" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="12" fill="#616b76">each folder gets a drill-down page</text>
+    <g font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="11" fill="#3b4552">
+      <circle cx="806" cy="126" r="4" fill="#f7931a"/>
+      <text x="818" y="130">Ledger main</text>
+      <rect x="922" y="122" width="88" height="7" rx="3.5" fill="#f0ece4"/>
+      <rect x="922" y="122" width="64" height="7" rx="3.5" fill="#f7931a" opacity=".45"/>
+      <circle cx="806" cy="146" r="4" fill="#0f766e"/>
+      <text x="818" y="150">KBC checking</text>
+      <rect x="922" y="142" width="88" height="7" rx="3.5" fill="#f0ece4"/>
+      <rect x="922" y="142" width="48" height="7" rx="3.5" fill="#0f766e" opacity=".45"/>
+      <circle cx="806" cy="166" r="4" fill="#1d4ed8"/>
+      <text x="818" y="170">Kraken</text>
+      <rect x="922" y="162" width="88" height="7" rx="3.5" fill="#f0ece4"/>
+      <rect x="922" y="162" width="34" height="7" rx="3.5" fill="#1d4ed8" opacity=".45"/>
+    </g>
+    <text x="800" y="195" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="10.5" fill="#0f766e">entities/&lt;account-id&gt;.html</text>
+  </g>
+
+  <!-- card 3 provenance -->
+  <g filter="url(#mapShadow)">
+    <rect x="360" y="245" width="390" height="165" rx="19" fill="#ffffff"/>
+    <text x="380" y="277" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="18" font-weight="750" fill="#11161c">Provenance</text>
+    <text x="380" y="297" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="12" fill="#616b76">chain of custody, fees and funding links</text>
+    <g fill="none" stroke="#0f766e" stroke-width="2">
+      <circle cx="630" cy="300" r="10" fill="#e2f5f0"/>
+      <circle cx="676" cy="300" r="10" fill="#e2f5f0"/>
+      <circle cx="722" cy="300" r="10" fill="#e2f5f0"/>
+      <path d="M640 300 H666"/>
+      <path d="M686 300 H712"/>
+      <path d="M660 296 L666 300 L660 304"/>
+      <path d="M706 296 L712 300 L706 304"/>
+    </g>
+    <text x="620" y="330" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="9.5" fill="#0f766e">buy → wallet → spend</text>
+    <text x="380" y="366" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="10.5" fill="#0f766e">provenance/&lt;txid&gt;_&lt;vout&gt;.html</text>
+    <text x="380" y="388" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="11" fill="#7a8491">exact / approximate / allocated tiers</text>
+  </g>
+
+  <!-- card 4 bank -->
+  <g filter="url(#mapShadow)">
+    <rect x="780" y="245" width="390" height="165" rx="19" fill="#ffffff"/>
+    <text x="800" y="277" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="18" font-weight="750" fill="#11161c">Bank review</text>
+    <text x="800" y="297" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="12" fill="#616b76">match fiat legs, inspect every row</text>
+    <g>
+      <circle cx="866" cy="334" r="18" fill="#e2f5f0" stroke="#0f766e" stroke-width="2"/>
+      <text x="866" y="339" text-anchor="middle" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="13" font-weight="750" fill="#0f766e">✓</text>
+      <text x="894" y="330" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="11" fill="#3b4552">matched</text>
+      <text x="894" y="345" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="10" fill="#7a8491">exact or approximate</text>
+      <circle cx="1010" cy="334" r="18" fill="#fff1dc" stroke="#f7931a" stroke-width="2"/>
+      <text x="1010" y="339" text-anchor="middle" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="13" font-weight="750" fill="#9a4d06">?</text>
+      <text x="1038" y="330" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="11" fill="#3b4552">unmatched</text>
+      <text x="1038" y="345" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="10" fill="#7a8491">never guessed</text>
+    </g>
+    <text x="800" y="388" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="11" fill="#7a8491">bank rows are evidence, never pool input</text>
+    <text x="1020" y="388" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="9.5" fill="#0f766e">bank/bank.html</text>
+  </g>
+
+  <!-- card 5 tax -->
+  <g filter="url(#mapShadow)">
+    <rect x="360" y="440" width="390" height="165" rx="19" fill="#ffffff"/>
+    <text x="380" y="472" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="18" font-weight="750" fill="#11161c">Tax report</text>
+    <text x="380" y="492" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="12" fill="#616b76">gains, cost basis, classification, caveats</text>
+    <g>
+      <rect x="620" y="466" width="130" height="52" rx="8" fill="#f4f1eb"/>
+      <rect x="630" y="477" width="70" height="6" rx="3" fill="#c9c2b6"/>
+      <rect x="630" y="490" width="102" height="6" rx="3" fill="#e5dfd4"/>
+      <rect x="630" y="503" width="86" height="6" rx="3" fill="#e5dfd4"/>
+      <rect x="630" y="477" width="36" height="6" rx="3" fill="#f7931a"/>
+    </g>
+    <text x="380" y="548" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="10.5" fill="#0f766e">&lt;year&gt;/report.html</text>
+    <text x="380" y="570" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="11" fill="#7a8491">+ printable full report</text>
+    <text x="380" y="590" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="11" fill="#7a8491">+ evidence bundle</text>
+  </g>
+
+  <!-- card 6 evidence -->
+  <g filter="url(#mapShadow)">
+    <rect x="780" y="440" width="390" height="165" rx="19" fill="#ffffff"/>
+    <text x="800" y="472" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="18" font-weight="750" fill="#11161c">Evidence ZIP</text>
+    <text x="800" y="492" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="12" fill="#616b76">reproducible source + hash manifest</text>
+    <g>
+      <rect x="800" y="506" width="82" height="52" rx="9" fill="#e5f7ed" stroke="#087443" stroke-width="1.5"/>
+      <path d="M818 521 v-4 h22 v4" fill="none" stroke="#087443" stroke-width="1.5"/>
+      <circle cx="829" cy="538" r="7" fill="#ffffff" stroke="#087443" stroke-width="1.5"/>
+      <path d="M829 531 v7 l5 3" fill="none" stroke="#087443" stroke-width="1.5"/>
+      <text x="896" y="519" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="9.5" fill="#087443">manifest.json</text>
+      <text x="896" y="534" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="9.5" fill="#087443">sources/accounts/…</text>
+      <text x="896" y="549" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="9.5" fill="#087443">attachments/…</text>
+    </g>
+    <text x="800" y="578" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="10.5" fill="#7a8491">root utxoproof.toml excluded: it may hold RPC credentials</text>
+    <text x="800" y="596" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="9.5" fill="#0f766e">&lt;year&gt;/utxoproof_evidence_&lt;year&gt;_&lt;stamp&gt;.zip</text>
+  </g>
+
+  <text x="360" y="646" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="13" fill="#616b76">Start at the overview, then click any account or UTXO. Every page links back; every number has a source.</text>
+  <text x="1170" y="646" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="10.5" fill="#9a4d06">read-only · local · printable</text>
+</svg>

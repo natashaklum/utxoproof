@@ -91,6 +91,10 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   (`portfolio/overview/`, `current-status/`). Don't cross-wire them.
 - Demos: `scripts/build_demo.py --out site` renders legacy fixture pages plus an
   offline, seeded v8 run under `site/v8/` (GitHub Pages workflow on `main`).
+  The illustrated high-volume onboarding guide is static HTML/CSS/SVG in
+  `docs/guide/` (no build dependency); the demo builder copies it verbatim to
+  `site/guide/` and links it from the landing page. Keep its commands and
+  diagrams in lockstep with the runner flags.
   `scripts/electrum_live_check.py` is the optional public Electrum smoke test
   (BIP84 public test vector; `UTXOPROOF_LIVE_ELECTRUM=1` for the pytest mark,
   or run the manual `Live Electrum smoke` workflow).

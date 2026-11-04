@@ -19,6 +19,11 @@ each UTXO and its provenance chain. The demo runs offline against
 `examples/input_v8` with deterministic seeded chain activity; all of the
 older fixture reports remain in the [demo index](https://natashaklum.github.io/utxoproof/).
 
+**New here with years of wallets, exchanges and statements?** Read the
+[illustrated Getting Started guide](https://natashaklum.github.io/utxoproof/guide/):
+inventory the sources, build one owner tree, pilot one slice, reconcile, then
+scale. The deeper command reference remains in `docs/USAGE.md`.
+
 Price history ships vendored (`utxoproof/data/btc_eur_daily.csv` from the first real
 2010 print, `utxoproof/data/usd_eur_daily.csv` from 1999) — refresh with
 `scripts/fetch_price_history.py`, seed caches via `EURPriceOracle.load_csv`.
@@ -35,7 +40,9 @@ privacy, advisory, provenance/saga, all-time) with evidence ZIPs, KYC
 propagation, all-parent provenance with persisted bank↔exchange↔chain links
 and value-weighted coverage, and demo reports published to GitHub Pages on
 every `main` push. `utxoproof-plan_v7.md` remains the tax/saga spec; the v8
-input and account workflow are documented in the [Slowstart guide](docs/USAGE.md).
+input and account workflow is introduced by the
+[Getting Started guide](https://natashaklum.github.io/utxoproof/guide/) and
+documented in depth in the [Slowstart reference](docs/USAGE.md).
 
 ## Installation
 
@@ -77,7 +84,9 @@ docker compose run --rm utxoproof sync --rpc-url http://bitcoind:8332 ...
 ## Quickstart
 
 Five minutes. For the twenty-minute version with concepts, config walkthrough
-and troubleshooting, read the [Slowstart guide](docs/USAGE.md).
+and troubleshooting, read the [Slowstart reference](docs/USAGE.md). If you are
+bringing years of accounts, start with the [illustrated Getting Started
+guide](https://natashaklum.github.io/utxoproof/guide/) instead.
 
 The primary workflow is one owner with many accounts:
 

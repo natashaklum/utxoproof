@@ -1,5 +1,10 @@
 # utxoproof user guide ("slowstart")
 
+> **Bringing years of wallets, exchanges and statements?** Start with the
+> illustrated [Getting Started guide](https://natashaklum.github.io/utxoproof/guide/).
+> It covers inventory, the owner tree, a one-slice pilot, reconciliation and the
+> scaling playbook. This page is the deeper command reference.
+
 The README quickstart gets you running in five minutes. This guide explains
 what each step does, in the order you would actually use the tool. Every
 command below is also documented with flags in `utxoproof --help`.
@@ -720,9 +725,9 @@ USD-denominated legs at the official reference rate.
 `EURPriceOracle.load_csv` imports them (existing rows win, so live data is
 never clobbered). Refresh the vendored files with
 `scripts/fetch_price_history.py`. Regenerate the demo site any time with
-`scripts/build_demo.py --out site`; it publishes the legacy fixture reports and
-the offline, seeded v8 account workflow under `site/v8/` (index:
-`site/index.html`).
+`scripts/build_demo.py --out site`; it publishes the legacy fixture reports,
+the offline, seeded v8 account workflow under `site/v8/`, and the illustrated
+Getting Started guide under `site/guide/` (index: `site/index.html`).
 
 ## 7. Supporting evidence (scans, screenshots, PDFs)
 

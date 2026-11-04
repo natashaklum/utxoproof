@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 620" role="img" aria-labelledby="pipeTitle pipeDesc">
+  <title id="pipeTitle">The utxoproof pipeline from source folders to reports and evidence</title>
+  <desc id="pipeDesc">Five stages: input source tree, offline discover validation, run with labels sync and imports, a single local SQLite ledger, and static reports plus an evidence ZIP.</desc>
+  <defs>
+    <linearGradient id="pipeBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#121f32"/>
+    </linearGradient>
+    <linearGradient id="pipeHot" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1c2638"/>
+      <stop offset="1" stop-color="#172033"/>
+    </linearGradient>
+    <filter id="pipeGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="0" stdDeviation="18" flood-color="#f7931a" flood-opacity=".24"/>
+    </filter>
+    <pattern id="pipeDots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1.2" fill="#ffffff" opacity=".12"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="620" rx="26" fill="url(#pipeBg)"/>
+  <rect x="1" y="1" width="1198" height="618" rx="25" fill="none" stroke="#253247"/>
+  <rect x="24" y="24" width="1152" height="572" rx="20" fill="url(#pipeDots)" opacity=".55"/>
+
+  <g font-family="Inter, Segoe UI, system-ui, sans-serif">
+    <rect x="52" y="44" width="134" height="28" rx="14" fill="#ffffff" opacity=".08"/>
+    <circle cx="69" cy="58" r="4" fill="#34d399"/>
+    <text x="80" y="63" font-size="11.5" font-weight="700" fill="#d8e2ee" letter-spacing=".08em">LOCAL-FIRST</text>
+    <text x="1148" y="63" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="11" fill="#7f8b9a">source → evidence</text>
+  </g>
+
+  <!-- arrows -->
+  <g fill="none" stroke="#5d6b80" stroke-width="1.6" stroke-linecap="round">
+    <path d="M233 302 H249"/>
+    <path d="M243 296 L250 302 L243 308"/>
+    <path d="M453 302 H469"/>
+    <path d="M463 296 L470 302 L463 308"/>
+    <path d="M673 302 H689"/>
+    <path d="M683 296 L690 302 L683 308"/>
+    <path d="M893 302 H909"/>
+    <path d="M903 296 L910 302 L903 308"/>
+  </g>
+
+  <!-- stage 1 -->
+  <g transform="translate(-7 0)">
+    <rect x="42" y="122" width="194" height="340" rx="20" fill="#141f31" stroke="#26344a"/>
+    <circle cx="68" cy="148" r="13" fill="#f7931a"/>
+    <text x="68" y="153" text-anchor="middle" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="12" font-weight="800" fill="#0b1220">1</text>
+    <text x="90" y="153" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="15" font-weight="750" fill="#ffffff">Sources</text>
+    <rect x="62" y="176" width="154" height="46" rx="12" fill="#0b1220" stroke="#2c3d55"/>
+    <text x="76" y="196" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="11" fill="#f7931a">input/</text>
+    <text x="76" y="212" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="10.5" fill="#94a3b8">your source tree</text>
+    <g font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="12" fill="#cbd5e1">
+      <text x="62" y="252">accounts/*/account.toml</text>
+      <text x="62" y="274">descriptors · BIP329</text>
+      <text x="62" y="296">bank statements · trades</text>
+      <text x="62" y="318">PDFs · screenshots</text>
+    </g>
+    <rect x="62" y="414" width="154" height="28" rx="8" fill="#1b2a40"/>
+    <text x="74" y="432" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="10" fill="#8fa1b8">never written by run</text>
+  </g>
+
+  <!-- stage 2 -->
+  <g transform="translate(-15 0)">
+    <rect x="270" y="122" width="194" height="340" rx="20" fill="#141f31" stroke="#26344a"/>
+    <circle cx="296" cy="148" r="13" fill="#e2e8f0"/>
+    <text x="296" y="153" text-anchor="middle" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="12" font-weight="800" fill="#0b1220">2</text>
+    <text x="318" y="153" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="15" font-weight="750" fill="#ffffff">Validate</text>
+    <rect x="290" y="176" width="154" height="46" rx="12" fill="#0b1220" stroke="#2c3d55"/>
+    <text x="304" y="196" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="11" fill="#e2e8f0">discover</text>
+    <text x="304" y="212" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="10.5" fill="#94a3b8">no database writes</text>
+    <g font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="12" fill="#cbd5e1">
+      <text x="290" y="252">manifests + descriptors</text>
+      <text x="290" y="274">duplicate script check</text>
+      <text x="290" y="296">CSV parser dry run</text>
+      <text x="290" y="318">optional backend ping</text>
+    </g>
+    <rect x="290" y="414" width="154" height="28" rx="8" fill="#1b2a40"/>
+    <text x="302" y="432" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="10" fill="#8fa1b8">--online when ready</text>
+  </g>
+
+  <!-- stage 3 -->
+  <g transform="translate(1 0)">
+    <rect x="474" y="122" width="194" height="340" rx="20" fill="#141f31" stroke="#26344a"/>
+    <circle cx="500" cy="148" r="13" fill="#a7f3d0"/>
+    <text x="500" y="153" text-anchor="middle" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="12" font-weight="800" fill="#0b1220">3</text>
+    <text x="522" y="153" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="15" font-weight="750" fill="#ffffff">Ingest</text>
+    <rect x="494" y="176" width="154" height="46" rx="12" fill="#0b1220" stroke="#2c3d55"/>
+    <text x="508" y="196" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="11" fill="#a7f3d0">run</text>
+    <text x="508" y="212" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="10.5" fill="#94a3b8">orchestrates every step</text>
+    <g font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="12" fill="#cbd5e1">
+      <text x="494" y="252">import BIP329 labels</text>
+      <text x="494" y="274">sync Electrum histories</text>
+      <text x="494" y="296">parse bank + exchange CSV</text>
+      <text x="494" y="318">attribute per output</text>
+    </g>
+    <rect x="494" y="414" width="154" height="28" rx="8" fill="#1b2a40"/>
+    <text x="506" y="432" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="10" fill="#8fa1b8">--offline supported</text>
+  </g>
+
+  <!-- stage 4 -->
+  <g transform="translate(17 0)" filter="url(#pipeGlow)">
+    <rect x="678" y="122" width="194" height="340" rx="20" fill="url(#pipeHot)" stroke="#f7931a" stroke-opacity=".65"/>
+    <circle cx="704" cy="148" r="13" fill="#f7931a"/>
+    <text x="704" y="153" text-anchor="middle" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="12" font-weight="800" fill="#0b1220">4</text>
+    <text x="726" y="153" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="15" font-weight="750" fill="#ffffff">Ledger</text>
+    <rect x="698" y="176" width="154" height="46" rx="12" fill="#0b1220" stroke="#6b4b22"/>
+    <text x="712" y="196" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="11" fill="#f7931a">utxoproof.db</text>
+    <text x="712" y="212" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="10.5" fill="#94a3b8">one local source of truth</text>
+    <g font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="12" fill="#cbd5e1">
+      <text x="698" y="252">accounts + scripts</text>
+      <text x="698" y="274">transactions + outputs</text>
+      <text x="698" y="296">labels + provenance links</text>
+      <text x="698" y="318">reproducible imports</text>
+    </g>
+    <rect x="698" y="414" width="154" height="28" rx="8" fill="#2a2114"/>
+    <text x="710" y="432" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="10" fill="#f6c177">reconcile anytime</text>
+  </g>
+
+  <!-- stage 5 -->
+  <g transform="translate(33 0)">
+    <rect x="882" y="122" width="262" height="340" rx="20" fill="#141f31" stroke="#26344a"/>
+    <circle cx="908" cy="148" r="13" fill="#93c5fd"/>
+    <text x="908" y="153" text-anchor="middle" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="12" font-weight="800" fill="#0b1220">5</text>
+    <text x="930" y="153" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="15" font-weight="750" fill="#ffffff">Outputs</text>
+    <rect x="902" y="176" width="222" height="46" rx="12" fill="#0b1220" stroke="#2c3d55"/>
+    <text x="916" y="196" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="11" fill="#93c5fd">reports/</text>
+    <text x="916" y="212" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="10.5" fill="#94a3b8">static HTML · no JavaScript</text>
+    <g font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="12" fill="#cbd5e1">
+      <text x="902" y="252">overview + account pages</text>
+      <text x="902" y="274">provenance + bank review</text>
+      <text x="902" y="296">tax + full report</text>
+      <text x="902" y="318">evidence ZIP + manifest</text>
+    </g>
+    <rect x="902" y="414" width="222" height="28" rx="8" fill="#1b2a40"/>
+    <text x="914" y="432" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="10" fill="#8fa1b8">open overview/overview.html</text>
+  </g>
+
+  <g font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="13" fill="#94a3b8">
+    <text x="600" y="520" text-anchor="middle">Offline first. Validate the tree before a single network call.</text>
+    <text x="600" y="543" text-anchor="middle" fill="#64748b">Then sync, reconcile, and build the filing copy from the same source tree.</text>
+  </g>
+  <rect x="52" y="572" width="1096" height="1" fill="#26344a"/>
+  <text x="52" y="594" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="10.5" fill="#64748b">input/ → discover → run → data/utxoproof.db → reports/</text>
+  <text x="1148" y="594" text-anchor="end" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="10.5" fill="#64748b">nothing leaves this machine</text>
+</svg>
