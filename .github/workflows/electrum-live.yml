@@ -1,0 +1,20 @@
+name: Live Electrum smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Public Electrum end-to-end
+        run: UTXOPROOF_LIVE_ELECTRUM=1 pytest -m network -p no:cacheprovider --no-cov tests/test_electrum_live.py

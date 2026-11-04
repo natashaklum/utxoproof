@@ -15,6 +15,7 @@ from decimal import Decimal
 from typing import Any, cast
 
 from utxoproof.accounts import Account
+from utxoproof.db import relink_spends
 from utxoproof.descriptors import derive_descriptor_scripts
 from utxoproof.electrum import (
     ElectrumClient,
@@ -25,7 +26,7 @@ from utxoproof.electrum import (
 )
 
 SAT_PER_BTC = Decimal(100_000_000)
-DEFAULT_BATCH_SIZE = 100
+DEFAULT_BATCH_SIZE = 20
 MAX_GAP = 10_000
 
 
@@ -178,6 +179,7 @@ class ElectrumOnchainImporter:
                 raise RuntimeError(f"Electrum did not return transaction {txid}")
             inserted = self._store_transaction(fetched)
             summary.new_txs += int(inserted)
+        relink_spends(self._db)
         summary.outputs_attributed = self._attribute_outputs()
         self._stamp_sync(summary)
         return summary

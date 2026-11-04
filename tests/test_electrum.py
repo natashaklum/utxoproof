@@ -208,6 +208,20 @@ def test_get_histories_keys_and_mempool_height() -> None:
     assert len(fake.payloads) == 2  # three scripts, batch_size=2
 
 
+def test_get_histories_retries_when_a_public_server_drops_a_large_batch() -> None:
+    scripts = {f"script-{i}": "0014" + "00" * 20 for i in range(3)}
+
+    def handler(payload: object) -> object:
+        if isinstance(payload, list) and len(payload) > 2:
+            raise ElectrumError("Electrum server closed the connection")
+        requests = cast(list[dict[str, object]], payload)
+        return [{"jsonrpc": "2.0", "id": request["id"], "result": []} for request in requests]
+
+    client, fake = _client(handler)
+    assert get_histories(client, scripts) == {key: [] for key in scripts}
+    assert [len(cast(list[object], payload)) for payload in fake.payloads] == [3, 1, 2]
+
+
 def test_fetch_transactions_decodes_real_transaction_and_dedupes() -> None:
     fixture = _fixture()
     txs = _fixture_transactions()

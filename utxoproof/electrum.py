@@ -28,7 +28,7 @@ from embit.transaction import Transaction, TransactionInput
 SAT_PER_BTC = Decimal(100_000_000)
 DEFAULT_SSL_PORT = 50002
 DEFAULT_TCP_PORT = 50001
-BATCH_SIZE = 100
+BATCH_SIZE = 20
 
 
 class ElectrumError(RuntimeError):
@@ -301,6 +301,17 @@ def _chunks(items: Sequence[T], size: int) -> Iterable[Sequence[T]]:
         yield items[start : start + size]
 
 
+def _resilient_batch(client: ElectrumClient, calls: list[tuple[str, list[object]]]) -> list[object]:
+    """Run a batch, halving it if a public server drops an oversized request."""
+    try:
+        return client.batch(calls)
+    except ElectrumError:
+        if len(calls) <= 1:
+            raise
+        middle = len(calls) // 2
+        return _resilient_batch(client, calls[:middle]) + _resilient_batch(client, calls[middle:])
+
+
 def get_histories(
     client: ElectrumClient,
     scripts: dict[str, str],
@@ -316,7 +327,7 @@ def get_histories(
             ("blockchain.scripthash.get_history", [scripthash(scripts[script_id])])
             for script_id in chunk
         ]
-        results = client.batch(calls)
+        results = _resilient_batch(client, calls)
         for script_id, result in zip(chunk, results, strict=True):
             histories[script_id] = _history_entries(result, "blockchain.scripthash.get_history")
     return histories
@@ -329,7 +340,8 @@ def _history_entries(result: object, method: str) -> list[HistoryEntry]:
     for item in result:
         if not isinstance(item, dict):
             raise ElectrumError(f"RPC {method}: history entry is not an object")
-        txid = item.get("txid")
+        # Electrum protocol uses ``tx_hash``; older/fake servers may use ``txid``.
+        txid = item.get("tx_hash", item.get("txid"))
         height = item.get("height")
         if not isinstance(txid, str) or not isinstance(height, int):
             raise ElectrumError(f"RPC {method}: malformed history entry {item!r}")
@@ -433,7 +445,7 @@ def fetch_transactions(
         tx_calls: list[tuple[str, list[object]]] = [
             ("blockchain.transaction.get", [txid]) for txid in tx_chunk
         ]
-        tx_results = client.batch(tx_calls)
+        tx_results = _resilient_batch(client, tx_calls)
         for txid, tx_result in zip(tx_chunk, tx_results, strict=True):
             if not isinstance(txid, str) or not isinstance(tx_result, str):
                 raise ElectrumError(f"RPC blockchain.transaction.get: malformed result for {txid}")
@@ -445,7 +457,7 @@ def fetch_transactions(
         header_calls: list[tuple[str, list[object]]] = [
             ("blockchain.block.header", [height]) for height in height_chunk
         ]
-        header_results = client.batch(header_calls)
+        header_results = _resilient_batch(client, header_calls)
         for height, header_result in zip(height_chunk, header_results, strict=True):
             if not isinstance(height, int) or not isinstance(header_result, str):
                 raise ElectrumError(f"RPC blockchain.block.header: malformed result for {height}")

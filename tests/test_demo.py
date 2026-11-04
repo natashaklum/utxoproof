@@ -27,6 +27,17 @@ def test_demo_builds_bank_page_and_kbc_entity(tmp_path: Path) -> None:
     overview = (out / "overview" / "overview.html").read_text(encoding="utf-8")
     assert "kbc-checking" in overview
 
+    v8_overview = (out / "v8" / "overview" / "overview.html").read_text(encoding="utf-8")
+    assert "synthetic v8 account workflow" in v8_overview
+    assert "Ledger main" in v8_overview and "2.49000000" in v8_overview
+    ledger = (out / "v8" / "entities" / "ledger-main.html").read_text(encoding="utf-8")
+    assert "Cold storage UTXO" in ledger
+    assert (out / "v8" / "bank" / "bank.html").is_file()
+    assert (out / "v8" / "2023" / "report.html").is_file()
+    index = (out / "index.html").read_text(encoding="utf-8")
+    assert "v8/overview/overview.html" in index
+    assert "v8/entities/ledger-main.html" in index
+
 
 def test_demo_nav_links_all_resolve(tmp_path: Path) -> None:
     """Guard against menu drift: every nav href in the demo must hit a file."""

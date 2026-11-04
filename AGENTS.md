@@ -39,7 +39,8 @@ VIRTUAL_ENV=.venv uv pip install -e ".[dev]"
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/mypy utxoproof/ scripts/               # strict, must be clean
 .venv/bin/python -m pytest                         # must pass
-.venv/bin/python scripts/build_demo.py --out site  # demo HTML reports
+.venv/bin/python scripts/build_demo.py --out site  # legacy + seeded v8 demos
+.venv/bin/python scripts/electrum_live_check.py    # optional public-server smoke
 ```
 
 No system pip, no `cc` on dev machines: keep runtime deps pure-Python.
@@ -85,6 +86,14 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   `setup`/`sync`). `examples/run.sh` is a thin v8 wrapper; the old self-contained
   v7 script is `examples/run_legacy.sh` and owns `MODE=prepare/refresh/clean`,
   `WALLETS`, `BANK_CSV` and fixture tests.
+- Menus: v8 `run` uses `account_site_pages` (`overview/`, `bank/`, year reports);
+  the legacy `run_legacy.sh` layout keeps `run_site_pages`
+  (`portfolio/overview/`, `current-status/`). Don't cross-wire them.
+- Demos: `scripts/build_demo.py --out site` renders legacy fixture pages plus an
+  offline, seeded v8 run under `site/v8/` (GitHub Pages workflow on `main`).
+  `scripts/electrum_live_check.py` is the optional public Electrum smoke test
+  (BIP84 public test vector; `UTXOPROOF_LIVE_ELECTRUM=1` for the pytest mark,
+  or run the manual `Live Electrum smoke` workflow).
 - KYC lives in `utxoproof/kyc.py` (proportional propagation, mixing detection);
   `utxoproof privacy` renders it. Shared sample graph: `create_sample_graph()`.
 - Advisory lives in `utxoproof/advisory.py` (Sec. 13 flag rules, estate score);

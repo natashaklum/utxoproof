@@ -40,3 +40,29 @@ def open_memory_db() -> sqlite3.Connection:
     db = sqlite3.connect(":memory:")
     init_db(db)
     return db
+
+
+def relink_spends(db: sqlite3.Connection) -> None:
+    """Recompute ``tx_outputs.spent_by_*`` from the full input graph.
+
+    Sync backends can see a spending transaction before the transaction that
+    created the output (same-block ordering, multi-account overlap). A single
+    post-pass makes the spend relation independent of arrival order and clears
+    stale links after a reorg.
+    """
+    db.execute(
+        "UPDATE tx_outputs SET "
+        "spent_by_txid=(SELECT i.txid FROM tx_inputs i "
+        " WHERE i.prev_txid=tx_outputs.txid AND i.prev_vout=tx_outputs.vout LIMIT 1), "
+        "spent_by_input=(SELECT i.input_index FROM tx_inputs i "
+        " WHERE i.prev_txid=tx_outputs.txid AND i.prev_vout=tx_outputs.vout LIMIT 1) "
+        "WHERE EXISTS (SELECT 1 FROM tx_inputs i "
+        " WHERE i.prev_txid=tx_outputs.txid AND i.prev_vout=tx_outputs.vout)"
+    )
+    db.execute(
+        "UPDATE tx_outputs SET spent_by_txid=NULL, spent_by_input=NULL "
+        "WHERE spent_by_txid IS NOT NULL AND NOT EXISTS ("
+        "SELECT 1 FROM tx_inputs i WHERE i.prev_txid=tx_outputs.txid "
+        "AND i.prev_vout=tx_outputs.vout)"
+    )
+    db.commit()

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import datetime
+import os
 import sqlite3
 from dataclasses import dataclass
 from decimal import Decimal
@@ -48,6 +49,7 @@ class RunOptions:
     as_of: str = ""
     full: bool = False
     no_zip: bool = False
+    demo_notice: str = ""
 
 
 def _account_json(account: Account) -> dict[str, Any]:
@@ -603,6 +605,9 @@ def _build_reports(
     )
     from utxoproof.price_oracle import bundled_history_path
     from utxoproof.reports import (
+        account_site_pages,
+        report_years,
+        site_nav,
         write_bank_page,
         write_entity_pages,
         write_full_report,
@@ -636,6 +641,24 @@ def _build_reports(
         bank_specs or None,
     )
     report_year = _report_year(options, registry, manual)
+    tax_years = sorted(set(report_years(reports_dir)))
+    if report_year is not None:
+        tax_years = sorted(set(tax_years) | {report_year})
+    bank_expected = bool(bank_rows) or (reports_dir / "bank" / "bank.html").is_file()
+    full_year = (
+        report_year
+        if report_year is not None
+        and (
+            (_selected(options, "report") and manual is not None)
+            or (reports_dir / str(report_year) / "fullreport.html").is_file()
+        )
+        else None
+    )
+    nav_pages = account_site_pages(tax_years, bank=bank_expected, full_report_year=full_year)
+
+    def nav_for(target: Path) -> list[dict[str, object]]:
+        return site_nav(nav_pages, reports_dir, target)
+
     if _selected(options, "report") and manual is not None and report_year is not None:
         year_out = reports_dir / str(report_year)
         target = write_report(
@@ -645,7 +668,8 @@ def _build_reports(
             registry.config.taxpayer.communal_surcharge_rate,
             registry.config.classifier,
             price_at=price_at,
-            site_root=reports_dir,
+            demo_notice=options.demo_notice,
+            nav=nav_for(year_out / "report.html"),
         )
         lines.append(f"wrote {target}")
         if not options.no_zip:
@@ -684,25 +708,54 @@ def _build_reports(
     sparkline = svg_sparkline(
         load_price_series(bundled_history_path()), label="BTC/EUR daily close, last 12 months"
     )
+    overview_target = reports_dir / "overview" / "overview.html"
+    overview_links = [
+        {"title": str(item["title"]), "href": str(item["href"])}
+        for item in site_nav(
+            [page for page in nav_pages if page[0] != "Overview"],
+            reports_dir,
+            overview_target,
+        )
+    ]
     overview = write_overview_page(
         portfolio,
         as_of.isoformat(),
         price_note,
         reports_dir / "overview",
         sparkline,
-        site_root=reports_dir,
+        demo_notice=options.demo_notice,
+        reports=overview_links,
+        nav=nav_for(overview_target),
     )
     lines.append(f"wrote {overview}")
     flags_by_utxo = {
         f"{item.txid}:{item.vout}": ",".join(sorted(flag.value for flag in item.flags))
         for item in advisories
     }
+    review_year = report_year if report_year is not None else (tax_years[-1] if tax_years else None)
+    review_links: dict[str, dict[str, str]] = {}
+    entities_dir = reports_dir / "entities"
+    for account in portfolio.entities:
+        if account.kind in ("bank", "credit_card") and bank_expected:
+            review_links[account.id] = {
+                "title": "Bank review",
+                "href": os.path.relpath(reports_dir / "bank" / "bank.html", entities_dir),
+            }
+        elif account.kind == "exchange" and review_year is not None:
+            review_links[account.id] = {
+                "title": f"Tax report {review_year}",
+                "href": os.path.relpath(
+                    reports_dir / str(review_year) / "report.html", entities_dir
+                ),
+            }
     for target in write_entity_pages(
         portfolio,
         "../provenance",
-        reports_dir / "entities",
+        entities_dir,
         flags_by_utxo,
-        site_root=reports_dir,
+        demo_notice=options.demo_notice,
+        review_links=review_links,
+        nav=nav_for(entities_dir / "account.html"),
     ):
         lines.append(f"wrote {target}")
     for utxo in portfolio.utxos:
@@ -714,7 +767,8 @@ def _build_reports(
             price,
             as_of,
             reports_dir / "provenance",
-            site_root=reports_dir,
+            demo_notice=options.demo_notice,
+            nav=nav_for(reports_dir / "provenance" / f"provenance_{utxo.txid}_{utxo.vout}.html"),
             saga_sources=sources,
             saga_document=documents[(utxo.txid, utxo.vout)],
         )
@@ -728,8 +782,9 @@ def _build_reports(
             matches,
             unmatched,
             reports_dir / "bank",
+            demo_notice=options.demo_notice,
             provenance_dir=reports_dir / "provenance",
-            site_root=reports_dir,
+            nav=nav_for(reports_dir / "bank" / "bank.html"),
         )
         lines.append(f"wrote {target}")
     if _selected(options, "report") and manual is not None and report_year is not None:
@@ -748,7 +803,8 @@ def _build_reports(
             provenance_targets=targets,
             portfolio=portfolio,
             price_history_svg=sparkline,
-            site_root=reports_dir,
+            demo_notice=options.demo_notice,
+            nav=nav_for(year_out / "fullreport.html"),
             saga_sources=sources,
         )
         lines.append(f"wrote {target}")

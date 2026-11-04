@@ -1,3 +1,3 @@
 {"type":"tx","ref":"1111111111111111111111111111111111111111111111111111111111111111","label":"Demo first buy"}
-{"type":"addr","ref":"bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu","label":"Ledger receive 0"}
+{"type":"addr","ref":"bc1qpux3z758ulsxg69eptaakukraanqwtdxe5yy4c","label":"Ledger receive 0"}
 {"type":"output","ref":"1111111111111111111111111111111111111111111111111111111111111111:0","label":"Cold storage UTXO"}

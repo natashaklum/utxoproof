@@ -298,6 +298,28 @@ def run_site_pages(site_root: str | Path, tax_years: list[int] | None) -> list[t
     return pages
 
 
+def account_site_pages(
+    tax_years: list[int] | None = None,
+    *,
+    bank: bool = True,
+    full_report_year: int | None = None,
+) -> list[tuple[str, str]]:
+    """Nav candidates for the v8 account layout (``utxoproof run``).
+
+    The account workflow writes the dashboard at ``overview/``, not the legacy
+    ``portfolio/overview/`` tree used by ``run_legacy.sh``. Keeping the two
+    layouts separate avoids dangling menus in the primary workflow.
+    """
+    pages: list[tuple[str, str]] = [("Overview", "overview/overview.html")]
+    for year in tax_years or []:
+        pages.append((f"Tax {year}", f"{year}/report.html"))
+    if full_report_year is not None:
+        pages.append((f"Full report {full_report_year}", f"{full_report_year}/fullreport.html"))
+    if bank:
+        pages.append(("Bank review", "bank/bank.html"))
+    return pages
+
+
 def report_years(site_root: str | Path) -> list[int]:
     """Every ``<YYYY>/report.html`` under the site root, sorted."""
     return sorted(

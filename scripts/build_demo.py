@@ -1,16 +1,22 @@
-"""Build the Pages demo site: HTML reports from fixture data + index.
+"""Build the Pages demo site: HTML reports from fixtures + the v8 example.
 
-Usage: ``python scripts/build_demo.py --out site``. Reads only files under
-``tests/fixtures``; writes self-contained HTML (no external assets).
+Usage: ``python scripts/build_demo.py --out site``. Reads only repo fixtures
+and ``examples/input_v8``; writes self-contained HTML (no external assets).
+The v8 demo runs offline and seeds a small deterministic chain graph.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import shutil
+import sqlite3
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from utxoproof.accounts import Account, Registry, attribute_outputs, load_registry
+from utxoproof.db import relink_spends
 from utxoproof.kraken_csv import parse_kraken_ledgers, to_manual_csv_rows
 from utxoproof.kyc import create_sample_graph
 from utxoproof.reports import (
@@ -21,6 +27,11 @@ from utxoproof.reports import (
 )
 
 ROOT = Path(__file__).resolve().parent.parent
+V8_INPUT = ROOT / "examples" / "input_v8"
+V8_NOTICE = (
+    "DEMO \u2014 synthetic v8 account workflow. Chain transactions are seeded "
+    "for illustration; not real holdings or tax advice."
+)
 
 
 @dataclass
@@ -60,6 +71,138 @@ DEMO_NOTICE = (
     "Not real transactions; figures are meaningless for filing."
 )
 
+
+def _v8_script(account: Account, chain: int, index: int) -> tuple[str, str]:
+    """First-party descriptor address/script for the demo chain fixture."""
+    from utxoproof.descriptors import derive_descriptor_scripts
+
+    descriptor = account.descriptors["external" if chain == 0 else "change"]
+    address, script_hex = derive_descriptor_scripts(
+        descriptor, branch=0, start=index, count=1, network=account.network
+    )[0]
+    return address, script_hex
+
+
+def _seed_v8_chain(db: sqlite3.Connection, registry: Registry) -> None:
+    """Insert a small deterministic graph that exercises every account page.
+
+    Txids 1111/2222 match the BIP329 example labels. 4444 spends one ledger
+    output and pays sparrow change, so provenance and spent-output handling are
+    visible without any network access.
+    """
+    transactions = [
+        ("1" * 64, 665_000, "2021-01-15T12:00:00+00:00"),
+        ("2" * 64, 700_000, "2022-02-02T12:00:00+00:00"),
+        ("3" * 64, 720_000, "2022-09-09T12:00:00+00:00"),
+        ("4" * 64, 760_000, "2023-03-04T12:00:00+00:00"),
+    ]
+    db.executemany(
+        "INSERT INTO transactions (txid,block_height,block_time,is_coinbase) VALUES (?,?,?,0)",
+        transactions,
+    )
+
+    def output(
+        txid: str,
+        vout: int,
+        account_id: str,
+        chain: int,
+        index: int,
+        value_sat: int,
+        source_type: str | None,
+    ) -> None:
+        account = registry.get(account_id)
+        address, script_hex = _v8_script(account, chain, index)
+        db.execute(
+            "INSERT INTO tx_outputs "
+            "(txid,vout,address,value_sat,source_type,source_label,script_hex,"
+            "is_mine,account_id) VALUES (?,?,?,?,?,?,?,1,?)",
+            (
+                txid,
+                vout,
+                address,
+                value_sat,
+                source_type,
+                "demo exchange purchase" if source_type else None,
+                script_hex,
+                account_id,
+            ),
+        )
+
+    output("1" * 64, 0, "ledger-main", 0, 0, 50_000_000, "exchange_purchase")
+    output("1" * 64, 1, "ledger-main", 0, 1, 25_000_000, "exchange_purchase")
+    output("2" * 64, 0, "sparrow-savings", 0, 0, 75_000_000, "exchange_purchase")
+    output("3" * 64, 0, "multisig-vault", 0, 0, 100_000_000, "exchange_purchase")
+    output("4" * 64, 0, "sparrow-savings", 1, 0, 24_000_000, None)
+    db.execute(
+        "INSERT INTO tx_outputs "
+        "(txid,vout,address,value_sat,script_hex,is_mine,account_id) VALUES (?,?,?,?,?,0,NULL)",
+        (
+            "4" * 64,
+            1,
+            "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu",
+            900_000,
+            "0014b71e0bbf787bc875d9f3d50ca581d558ff00f6cf",
+        ),
+    )
+    db.execute(
+        "INSERT INTO tx_inputs (txid,input_index,prev_txid,prev_vout) VALUES (?,?,?,?)",
+        ("4" * 64, 0, "1" * 64, 1),
+    )
+    relink_spends(db)
+    attribute_outputs(db, registry, strict=True)
+
+
+def _build_v8_demo(out: Path) -> list[tuple[str, str]]:
+    """Run the v8 example offline, seed a graph, and copy the rendered site."""
+    from utxoproof.runner import RunOptions, run
+
+    with tempfile.TemporaryDirectory(prefix="utxoproof-v8-demo-") as temp:
+        data = Path(temp) / "data"
+
+        def options(only: tuple[str, ...] = ()) -> RunOptions:
+            return RunOptions(
+                input_dir=V8_INPUT,
+                data_dir=data,
+                offline=True,
+                year=2023,
+                as_of="2023-12-31",
+                no_zip=True,
+                demo_notice=V8_NOTICE,
+                only=only,
+            )
+
+        if run(options()) != 0:
+            raise RuntimeError("v8 example run failed")
+        registry = load_registry(V8_INPUT)
+        db = sqlite3.connect(data / "utxoproof.db")
+        try:
+            _seed_v8_chain(db, registry)
+        finally:
+            db.close()
+        if run(options(("report", "portfolio"))) != 0:
+            raise RuntimeError("v8 example report refresh failed")
+        shutil.copytree(data / "reports", out / "v8", dirs_exist_ok=True)
+
+    landing = out / "v8" / "index.html"
+    landing.write_text(
+        '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
+        '<meta http-equiv="refresh" content="0; url=overview/overview.html">'
+        "<title>utxoproof v8 demo</title></head><body>"
+        '<div style="background:#fff3cd;border:2px solid #e8a13d;border-radius:8px;'
+        'padding:0.8em 1em;margin:1em 0;font-weight:bold;text-align:center;">'
+        + V8_NOTICE
+        + '</div><p><a href="overview/overview.html">Open the v8 account dashboard</a> '
+        '| <a href="../index.html">Back to all demo reports</a></p></body></html>',
+        encoding="utf-8",
+    )
+    return [
+        ("v8 account workflow overview", "v8/overview/overview.html"),
+        ("v8 Ledger main account", "v8/entities/ledger-main.html"),
+        ("v8 bank review", "v8/bank/bank.html"),
+        ("v8 tax report 2023", "v8/2023/report.html"),
+    ]
+
+
 INDEX_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="utf-8"><title>utxoproof demo reports</title></head>
@@ -98,6 +241,10 @@ def main() -> int:
         nav_pages.append((_demo.title, f"{_demo.slug}/report.html"))
         nav_pages.append((f"Holdings status — {_demo.slug}", f"{_demo.slug}/status.html"))
     nav_pages += [
+        ("v8 account workflow overview", "v8/overview/overview.html"),
+        ("v8 Ledger main account", "v8/entities/ledger-main.html"),
+        ("v8 bank review", "v8/bank/bank.html"),
+        ("v8 tax report 2023", "v8/2023/report.html"),
         ("Descriptor check (BIP84 vectors)", "descriptors/descriptors.html"),
         ("Bank review (KBC statement)", "bank/bank.html"),
         ("Privacy report (sample graph)", "privacy/privacy.html"),
@@ -496,6 +643,9 @@ def main() -> int:
     links.insert(
         1, '<li><a href="overview/overview.html"><strong>Portfolio overview</strong></a></li>'
     )
+
+    for offset, (title, href) in enumerate(_build_v8_demo(out), start=2):
+        links.insert(offset, f'<li><a href="{href}">{title}</a></li>')
 
     _write_docs_page(out)
     if (out / "docs" / "usage.html").is_file():

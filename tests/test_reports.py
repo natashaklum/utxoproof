@@ -297,6 +297,21 @@ def test_run_site_pages_lists_every_tax_year() -> None:
     ]
 
 
+def test_account_site_pages_use_the_v8_layout() -> None:
+    from utxoproof.reports import account_site_pages
+
+    assert account_site_pages([2022, 2023], bank=True, full_report_year=2023) == [
+        ("Overview", "overview/overview.html"),
+        ("Tax 2022", "2022/report.html"),
+        ("Tax 2023", "2023/report.html"),
+        ("Full report 2023", "2023/fullreport.html"),
+        ("Bank review", "bank/bank.html"),
+    ]
+    assert account_site_pages(None, bank=False) == [
+        ("Overview", "overview/overview.html"),
+    ]
+
+
 def test_report_all_years_nav_covers_every_year(tmp_path: Path) -> None:
     from utxoproof.cli import main
 

@@ -65,7 +65,9 @@ class FakeServer:
         method = payload["method"]
         params = payload["params"]
         if method == "blockchain.scripthash.get_history":
-            history = [{"txid": self.txid, "height": 800_000}] if params[0] == self.target else []
+            history = (
+                [{"tx_hash": self.txid, "height": 800_000}] if params[0] == self.target else []
+            )
             return {"id": payload["id"], "result": history, "error": None}
         if method == "blockchain.transaction.get":
             assert params[0] == self.txid

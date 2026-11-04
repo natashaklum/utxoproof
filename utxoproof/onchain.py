@@ -15,6 +15,7 @@ from decimal import Decimal
 from typing import Any
 
 from utxoproof.bitcoin_rpc import BitcoinRPC, BitcoinRPCError
+from utxoproof.db import relink_spends
 from utxoproof.descriptors import descriptor_for_core, with_checksum
 
 SAT_PER_BTC = 100_000_000
@@ -119,6 +120,7 @@ class BitcoinCoreOnchainImporter:
             summary["new_txs"] += 1
             summary["self_transfers"] += int(self_transfer)
             seen.add(txid)
+        relink_spends(self._db)
         summary["ownership_fixed"] = self.refresh_ownership()
         self._db.execute(
             "INSERT OR REPLACE INTO sync_state (key, value, updated_at) VALUES (?,?,?)",

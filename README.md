@@ -13,9 +13,11 @@ utxoproof answers three questions:
 3. **Where did this coin come from?** — full chain-of-custody provenance for
    any UTXO, EUR-valued at every step.
 
-Browse the [demo portfolio dashboard](https://natashaklum.github.io/utxoproof/overview/overview.html):
+Browse the [v8 account-workflow demo](https://natashaklum.github.io/utxoproof/v8/overview/overview.html):
 wallets, bank and exchange balances with allocation charts, drillable down to
-each UTXO and its provenance chain.
+each UTXO and its provenance chain. The demo runs offline against
+`examples/input_v8` with deterministic seeded chain activity; all of the
+older fixture reports remain in the [demo index](https://natashaklum.github.io/utxoproof/).
 
 Price history ships vendored (`utxoproof/data/btc_eur_daily.csv` from the first real
 2010 print, `utxoproof/data/usd_eur_daily.csv` from 1999) — refresh with
@@ -103,7 +105,7 @@ Offline CSV checks still work without an input tree:
 .venv/bin/utxoproof compute --input tests/fixtures/manual_2023.csv --year 2023
 .venv/bin/utxoproof status --input tests/fixtures/manual_2023.csv --price 40000
 .venv/bin/utxoproof report --input tests/fixtures/manual_2023.csv --year 2023 --out /tmp/utxo-report
-.venv/bin/python scripts/build_demo.py --out site  # all demo reports + index
+.venv/bin/python scripts/build_demo.py --out site  # legacy fixtures + v8 demo/index
 ```
 
 Optional Core-only diagnosis (needs a node; regtest via
