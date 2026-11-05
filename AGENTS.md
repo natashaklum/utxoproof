@@ -90,7 +90,8 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   the legacy `run_legacy.sh` layout keeps `run_site_pages`
   (`portfolio/overview/`, `current-status/`). Don't cross-wire them.
 - Demos: `scripts/build_demo.py --out site` renders legacy fixture pages plus an
-  offline, seeded v8 run under `site/v8/` (GitHub Pages workflow on `main`).
+  offline, seeded v8 run under `site/v8/` (GitHub Pages workflow on `main`,
+  published at <https://utxoproof.com/>).
   The illustrated high-volume onboarding guide is static HTML/CSS/SVG in
   `docs/guide/` (no build dependency); the demo builder copies it verbatim to
   `site/guide/` and links it from the landing page. Keep its commands and

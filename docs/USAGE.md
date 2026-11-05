@@ -1,7 +1,7 @@
 # utxoproof user guide ("slowstart")
 
 > **Bringing years of wallets, exchanges and statements?** Start with the
-> illustrated [Getting Started guide](https://natashaklum.github.io/utxoproof/guide/).
+> illustrated [Getting Started guide](https://utxoproof.com/guide/).
 > It covers inventory, the owner tree, a one-slice pilot, reconciliation and the
 > scaling playbook. This page is the deeper command reference.
 

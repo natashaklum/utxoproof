@@ -13,14 +13,14 @@ utxoproof answers three questions:
 3. **Where did this coin come from?** — full chain-of-custody provenance for
    any UTXO, EUR-valued at every step.
 
-Browse the [v8 account-workflow demo](https://natashaklum.github.io/utxoproof/v8/overview/overview.html):
+Browse the [v8 account-workflow demo](https://utxoproof.com/v8/overview/overview.html):
 wallets, bank and exchange balances with allocation charts, drillable down to
 each UTXO and its provenance chain. The demo runs offline against
 `examples/input_v8` with deterministic seeded chain activity; all of the
-older fixture reports remain in the [demo index](https://natashaklum.github.io/utxoproof/).
+older fixture reports remain in the [demo index](https://utxoproof.com/).
 
 **New here with years of wallets, exchanges and statements?** Read the
-[illustrated Getting Started guide](https://natashaklum.github.io/utxoproof/guide/):
+[illustrated Getting Started guide](https://utxoproof.com/guide/):
 inventory the sources, build one owner tree, pilot one slice, reconcile, then
 scale. The deeper command reference remains in `docs/USAGE.md`.
 
@@ -38,11 +38,11 @@ margin/rollover, Coinbase, Binance, Bisq) and Belgian bank parsing, EUR price
 oracle, Belgian classifier with `utxoproof.toml`, HTML reports (tax, status,
 privacy, advisory, provenance/saga, all-time) with evidence ZIPs, KYC
 propagation, all-parent provenance with persisted bank↔exchange↔chain links
-and value-weighted coverage, and demo reports published to GitHub Pages on
-every `main` push. `utxoproof-plan_v7.md` remains the tax/saga spec; the v8
-input and account workflow is introduced by the
-[Getting Started guide](https://natashaklum.github.io/utxoproof/guide/) and
-documented in depth in the [Slowstart reference](docs/USAGE.md).
+and value-weighted coverage, and demo reports published to
+<https://utxoproof.com/> on every `main` push. `utxoproof-plan_v7.md` remains
+the tax/saga spec; the v8 input and account workflow is introduced by the
+[Getting Started guide](https://utxoproof.com/guide/) and documented in depth
+in the [Slowstart reference](docs/USAGE.md).
 
 ## Installation
 
@@ -86,7 +86,7 @@ docker compose run --rm utxoproof sync --rpc-url http://bitcoind:8332 ...
 Five minutes. For the twenty-minute version with concepts, config walkthrough
 and troubleshooting, read the [Slowstart reference](docs/USAGE.md). If you are
 bringing years of accounts, start with the [illustrated Getting Started
-guide](https://natashaklum.github.io/utxoproof/guide/) instead.
+guide](https://utxoproof.com/guide/) instead.
 
 The primary workflow is one owner with many accounts:
 
