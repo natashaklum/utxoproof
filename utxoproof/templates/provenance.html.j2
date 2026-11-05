@@ -1,8 +1,9 @@
 {% extends "base.html.j2" %}
 {% from "sections.html.j2" import provenance_section %}
 {% block title %}utxoproof provenance {{ provenance.txid }}:{{ provenance.vout }}{% endblock %}
+{% block kicker %}Chain of custody{% endblock %}
+{% block heading %}UTXO provenance <code>{{ provenance.txid }}:{{ provenance.vout }}</code>{% if provenance.labels %} — {{ provenance.labels }}{% endif %}{% endblock %}
 {% block content %}
-<h1>UTXO provenance <code>{{ provenance.txid }}:{{ provenance.vout }}</code>{% if provenance.labels %} — {{ provenance.labels }}{% endif %}</h1>
 {% if provenance.address_label %}<p class="sub">Address label: {{ provenance.address_label }}</p>{% endif %}
-{{ provenance_section(provenance, intro) }}
+{{ provenance_section(provenance, intro, false) }}
 {% endblock %}

@@ -1,7 +1,8 @@
 {% extends "base.html.j2" %}
 {% from "sections.html.j2" import privacy_section %}
 {% block title %}utxoproof privacy report{% endblock %}
+{% block kicker %}Privacy and KYC{% endblock %}
+{% block heading %}utxoproof privacy report{% endblock %}
 {% block content %}
-<h1>utxoproof privacy report</h1>
-{{ privacy_section(privacy, intro) }}
+{{ privacy_section(privacy, intro, false) }}
 {% endblock %}

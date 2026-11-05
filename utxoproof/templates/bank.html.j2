@@ -1,9 +1,32 @@
 {% extends "base.html.j2" %}
 {% block title %}utxoproof bank review ({{ bank }}){% endblock %}
+{% block kicker %}Bank statement review{% endblock %}
+{% block heading %}Bank review — {{ bank }}{% endblock %}
 {% block content %}
-<h1>Bank review — {{ bank }}</h1>
-{% if demo_notice %}<div class="demo-banner">{{ demo_notice }}</div>{% endif %}
-<p>{{ intro }}</p>
+<div class="report-intro">{{ intro }}</div>
+
+<div class="metric-grid">
+  <div class="metric">
+    <span class="metric-label">Statement rows</span>
+    <strong class="metric-value">{{ rows | length }}</strong>
+    <span class="metric-note">parsed from supplied CSV files</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Fiat-leg matches</span>
+    <strong class="metric-value">{{ matches | length }}</strong>
+    <span class="metric-note">exchange trades with a euro leg</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Manual review</span>
+    <strong class="metric-value">{{ unmatched | length }}</strong>
+    <span class="metric-note">statement rows still unresolved</span>
+  </div>
+  <div class="metric accent">
+    <span class="metric-label">Rule</span>
+    <strong class="metric-value">Evidence</strong>
+    <span class="metric-note">bank rows corroborate, they never enter the cost pool</span>
+  </div>
+</div>
 
 <h2>Review progress</h2>
 <div class="charts">
@@ -18,33 +41,33 @@
 </div>
 
 <h2>Statement rows</h2>
-<table>
+<div class="table-wrap"><table>
   <tr><th>Date</th><th>Description</th><th>Amount (EUR)</th><th>Counterparty</th><th>Reference</th>{% if has_accounts %}<th>Account</th>{% endif %}<th>Source</th></tr>
   {% for r in rows %}
   <tr><td>{{ r.date }}</td><td>{{ r.description }}</td><td>{{ r.amount }}</td><td><code>{{ r.counterparty }}</code></td><td>{{ r.reference }}</td>{% if has_accounts %}<td>{{ r.account }}</td>{% endif %}<td><code>{{ r.source }}</code></td></tr>
   {% endfor %}
-</table>
+</table></div>
 
 <h2>Fiat-leg matches</h2>
 {% if matches %}
-<table>
+<div class="table-wrap"><table>
   <tr><th>Trade</th><th>Trade fiat (EUR)</th><th>Tier</th><th>Why matched</th><th>Statement date</th><th>Description</th><th>Amount (EUR)</th>{% if has_accounts %}<th>Account</th>{% endif %}<th>Source</th><th>Chain</th></tr>
   {% for m in matches %}
   <tr><td>{{ m.trade }}</td><td>{{ m.trade_fiat }}</td><td>{{ m.tier }}</td><td>{{ m.reasons }}</td><td>{{ m.date }}</td><td>{{ m.description }}</td><td>{{ m.amount }}</td>{% if has_accounts %}<td>{{ m.account }}</td>{% endif %}<td><code>{{ m.source }}</code></td><td>{% if m.chain_href %}<a href="{{ m.chain_href }}"><code>{{ m.chain }}</code></a>{% else %}<code>{{ m.chain }}</code>{% endif %}</td></tr>
   {% endfor %}
-</table>
+</table></div>
 {% else %}
 <p>No statement row matched an exchange trade within the matching window.</p>
 {% endif %}
 
 <h2>Unmatched rows (manual review)</h2>
 {% if unmatched %}
-<table>
+<div class="table-wrap"><table>
   <tr><th>Date</th><th>Description</th><th>Amount (EUR)</th>{% if has_accounts %}<th>Account</th>{% endif %}<th>Source</th></tr>
   {% for r in unmatched %}
   <tr><td>{{ r.date }}</td><td>{{ r.description }}</td><td>{{ r.amount }}</td>{% if has_accounts %}<td>{{ r.account }}</td>{% endif %}<td><code>{{ r.source }}</code></td></tr>
   {% endfor %}
-</table>
+</table></div>
 {% else %}
 <p>Every row matched. Nothing to review.</p>
 {% endif %}

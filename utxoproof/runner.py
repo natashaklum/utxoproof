@@ -50,6 +50,10 @@ class RunOptions:
     full: bool = False
     no_zip: bool = False
     demo_notice: str = ""
+    # Extra menu entries, relative to the reports root. Used by the demo build
+    # to link the generated site back to its landing page and guide; normal
+    # runs leave this empty.
+    nav_extra: tuple[tuple[str, str], ...] = ()
 
 
 def _account_json(account: Account) -> dict[str, Any]:
@@ -654,7 +658,8 @@ def _build_reports(
         )
         else None
     )
-    nav_pages = account_site_pages(tax_years, bank=bank_expected, full_report_year=full_year)
+    base_nav_pages = account_site_pages(tax_years, bank=bank_expected, full_report_year=full_year)
+    nav_pages = [*options.nav_extra, *base_nav_pages]
 
     def nav_for(target: Path) -> list[dict[str, object]]:
         return site_nav(nav_pages, reports_dir, target)
@@ -712,7 +717,7 @@ def _build_reports(
     overview_links = [
         {"title": str(item["title"]), "href": str(item["href"])}
         for item in site_nav(
-            [page for page in nav_pages if page[0] != "Overview"],
+            [page for page in base_nav_pages if page[0] != "Overview"],
             reports_dir,
             overview_target,
         )

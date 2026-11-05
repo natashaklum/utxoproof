@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>utxoproof demo reports</title>
+<meta name="description" content="Synthetic utxoproof reports: portfolio, tax, bank review, provenance and the v8 account workflow.">
+<meta name="theme-color" content="#0b1220">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23f7931a'/%3E%3Ctext x='32' y='45' font-family='Georgia,serif' font-size='40' font-weight='700' text-anchor='middle' fill='white'%3E%E2%82%BF%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="guide/style.css">
+<style>
+  .demo-hero { border-radius: 0 0 46px 46px; }
+  .demo-hero .hero-inner { padding-bottom: 78px; }
+  .demo-hero .hero-art { max-width: 620px; justify-self: end; }
+  .demo-main { max-width: 1180px; margin: 0 auto; padding: 48px 28px 90px; }
+  .demo-banner {
+    margin: 0 0 34px;
+    padding: 13px 17px;
+    border: 1px solid #f3d3a5;
+    border-left: 4px solid var(--orange);
+    border-radius: 0 13px 13px 0;
+    background: var(--orange-soft);
+    color: #56320d;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .demo-intro { max-width: 72ch; margin: 0 0 26px; color: var(--muted); font-size: 1.02rem; }
+  .report-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin: 24px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .report-grid li { margin: 0; }
+  .report-grid a {
+    display: flex;
+    min-height: 100%;
+    padding: 15px 17px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--card);
+    color: var(--ink);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset;
+    font-size: 13px;
+    font-weight: 650;
+    line-height: 1.42;
+    text-decoration: none;
+    transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+  }
+  .report-grid a::after { content: "↗"; margin-left: auto; padding-left: 12px; color: var(--orange-ink); }
+  .report-grid a:hover {
+    transform: translateY(-2px);
+    border-color: var(--line-strong);
+    box-shadow: var(--shadow-sm);
+    color: var(--ink);
+  }
+  .report-grid li:nth-child(1) a,
+  .report-grid li:nth-child(2) a {
+    color: #fff;
+    border-color: var(--navy-2);
+    background: radial-gradient(circle at 92% 12%, rgba(247, 147, 26, 0.26), transparent 45%),
+      linear-gradient(145deg, var(--navy), #14243a);
+  }
+  .report-grid li:nth-child(1) a::after,
+  .report-grid li:nth-child(2) a::after { color: var(--orange-2); }
+  .report-grid li:nth-child(1) a:hover,
+  .report-grid li:nth-child(2) a:hover { color: #fff; }
+  .demo-guide-card {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 34px 0 0;
+    padding: 22px 24px;
+    border-radius: 18px;
+    color: #fff;
+    background: radial-gradient(circle at 90% 20%, rgba(247, 147, 26, 0.28), transparent 42%),
+      linear-gradient(135deg, #0b1220, #14243a);
+    box-shadow: var(--shadow);
+  }
+  .demo-guide-card strong { display: block; margin-bottom: 3px; font-size: 18px; }
+  .demo-guide-card span { color: #b9c4d2; font-size: 13px; }
+  .demo-guide-card a {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 15px;
+    border-radius: 10px;
+    color: #16120b;
+    background: var(--orange);
+    font-size: 13px;
+    font-weight: 750;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .demo-guide-card a:hover { background: var(--orange-2); color: #16120b; }
+  .demo-final { margin-top: 34px; }
+  @media (max-width: 980px) {
+    .demo-hero .hero-art { justify-self: start; margin-top: 10px; }
+    .report-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 680px) {
+    .demo-main { padding: 38px 18px 70px; }
+    .report-grid { grid-template-columns: 1fr; }
+    .demo-guide-card { padding: 20px 18px; }
+  }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#reports">Skip to reports</a>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="index.html">
+      <span class="brand-mark" aria-hidden="true">₿</span>
+      <span>utxoproof</span>
+      <span class="brand-sub">demo reports</span>
+    </a>
+    <nav class="topnav" aria-label="Site links">
+      <a href="guide/index.html">Getting Started</a>
+      <a href="v8/overview/overview.html">Live dashboard</a>
+      <a href="docs/usage.html">Reference</a>
+      <a class="github" href="https://github.com/natashaklum/utxoproof">GitHub <span aria-hidden="true">↗</span></a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero demo-hero">
+    <div class="hero-inner">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="pulse" aria-hidden="true"></span> static demo · synthetic data</div>
+        <h1>Every report, <em>on one page.</em></h1>
+        <p class="lede">Explore the v8 account workflow from the dashboard down to a single UTXO's provenance. Every page is generated offline from repo fixtures: inspect the shape of the output, <strong>not real holdings or tax results</strong>.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="v8/overview/overview.html">Open the v8 dashboard <span aria-hidden="true">→</span></a>
+          <a class="btn btn-ghost" href="guide/index.html">Read the Getting Started guide</a>
+        </div>
+        <ul class="hero-facts">
+          <li>no JavaScript</li>
+          <li>deterministic fixtures</li>
+          <li>self-contained HTML</li>
+        </ul>
+      </div>
+      <div class="hero-art">
+        <img src="guide/images/reports-map.svg" width="1200" height="760" alt="Map of utxoproof reports: portfolio overview, account pages, tax, bank review, provenance and evidence.">
+      </div>
+    </div>
+  </section>
+
+  <div class="reality" aria-label="Demo principles">
+    <div class="reality-card">
+      <span class="tag">v8 first</span>
+      <p><strong>Start with one owner and typed accounts.</strong> The dashboard links every account to its UTXOs and every UTXO to its story.</p>
+    </div>
+    <div class="reality-card">
+      <span class="tag">Evidence visible</span>
+      <p><strong>Bank rows, exchange trades and chain hops stay separate.</strong> Matching is shown with reasons; candidates never become facts.</p>
+    </div>
+    <div class="reality-card">
+      <span class="tag">Safe to poke</span>
+      <p><strong>All data is fake and local.</strong> Nothing here talks to a wallet, exchange or bank; the demo build is fully offline.</p>
+    </div>
+  </div>
+
+  <div class="demo-main">
+    <div class="demo-banner">DEMO — dummy data on every page. Figures are meaningless for filing.</div>
+    <section id="reports">
+      <div class="section-kicker">Browse the output</div>
+      <h2>Start with the dashboard. Then follow the paper trail.</h2>
+      <p class="demo-intro">The v8 pages are the current shape of the product: a portfolio hub, account drill-downs, bank review, tax and a printable full report. The fixture reports below retain the older layouts for comparison.</p>
+      <ul class="report-grid">
+{links}
+      </ul>
+    </section>
+
+    <div class="demo-guide-card">
+      <div><strong>New here, with a lot of history?</strong>
+        <span>The illustrated guide walks from a shoebox of exports to a validated, filing-ready local ledger.</span></div>
+      <a href="guide/index.html">Read the guide <span aria-hidden="true">→</span></a>
+    </div>
+
+    <div class="final-cta demo-final">
+      <div class="section-kicker">Run it locally</div>
+      <h2>Your data stays yours.</h2>
+      <p>utxoproof is a local Python tool: watch-only descriptors, your statement files, one SQLite ledger and static reports. No cloud account, no analytics, no JavaScript.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="https://github.com/natashaklum/utxoproof">View the repository <span aria-hidden="true">↗</span></a>
+        <a class="btn btn-ghost" href="guide/index.html#checklist">Open the printable checklist</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div><strong>utxoproof</strong> · local-first Bitcoin tax ledger</div>
+    <div class="fine">Synthetic demo data only. Not tax advice. Reports are plain static HTML; the v8 demo runs offline with a seeded chain graph.</div>
+  </div>
+</footer>
+</body>
+</html>

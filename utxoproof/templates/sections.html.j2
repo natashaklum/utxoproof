@@ -2,13 +2,35 @@
    context dict its single-page writer builds — one markup, used standalone
    and inside the full report. #}
 
-{% macro intro_block(title, intro) %}
-<h2>{{ title }}</h2>
+{% macro intro_block(title, intro, show_heading=True) %}
+{% if show_heading %}<h2>{{ title }}</h2>{% endif %}
 <div class="report-intro">{{ intro }}</div>
 {% endmacro %}
 
-{% macro tax_section(t, intro) %}
-{{ intro_block("Tax report " ~ t.year, intro) }}
+{% macro tax_section(t, intro, show_heading=True) %}
+{{ intro_block("Tax report " ~ t.year, intro, show_heading) }}
+<div class="metric-grid">
+  <div class="metric">
+    <span class="metric-label">Realised gain / loss</span>
+    <strong class="metric-value">{{ t.gain_eur }} <small>EUR</small></strong>
+    <span class="metric-note">{{ t.disposal_count }} disposals</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Tax ({{ t.classification_label }})</span>
+    <strong class="metric-value">{{ t.tax_eur }} <small>EUR</small></strong>
+    <span class="metric-note">before communal surcharge</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Communal surcharge</span>
+    <strong class="metric-value">{{ t.communal_eur }} <small>EUR</small></strong>
+    <span class="metric-note">rate {{ t.communal_rate }}</span>
+  </div>
+  <div class="metric accent">
+    <span class="metric-label">Total due</span>
+    <strong class="metric-value">{{ t.total_eur }} <small>EUR</small></strong>
+    <span class="metric-note">verify with a tax adviser</span>
+  </div>
+</div>
 <p>Generated {{ t.generated_at }} by utxoproof {{ t.version }}.
 Cost basis method: {{ t.method }}. Classification: {{ t.classification_label }}.
 Communal surcharge rate: {{ t.communal_rate }}.</p>
@@ -21,86 +43,156 @@ Communal surcharge rate: {{ t.communal_rate }}.</p>
 {% endif %}
 
 <h3>Annual summary</h3>
-<table class="summary">
+<div class="table-wrap"><table class="summary">
   <tr><th>Item</th><th>EUR</th></tr>
   <tr><td>Realised gain/loss ({{ t.disposal_count }} disposals)</td><td>{{ t.gain_eur }}</td></tr>
   <tr><td>Tax ({{ t.classification_label }})</td><td>{{ t.tax_eur }}</td></tr>
   <tr><td>Communal surcharge</td><td>{{ t.communal_eur }}</td></tr>
   <tr><td>Total due</td><td>{{ t.total_eur }}</td></tr>
-</table>
+</table></div>
 
 <h3>Disposals</h3>
-<table>
+<div class="table-wrap"><table>
   <tr><th>Date</th><th>Type</th><th>BTC</th><th>Price (EUR/BTC)</th><th>Proceeds (EUR)</th><th>Cost basis (EUR)</th><th>Gain (EUR)</th><th>Tax (EUR)</th></tr>
   {% for d in t.disposals %}
   <tr><td>{{ d.date }}</td><td>{{ d.kind }}</td><td>{{ d.btc }}</td><td>{{ d.eur_per_btc }}</td><td>{{ d.proceeds_eur }}</td><td>{{ d.cost_basis_eur }}</td><td>{{ d.gain_eur }}</td><td>{{ d.tax_eur }}</td></tr>
   {% endfor %}
-</table>
+</table></div>
 {% endmacro %}
 
-{% macro status_section(s, intro) %}
-{{ intro_block("Holdings status", intro) }}
+{% macro status_section(s, intro, show_heading=True) %}
+{{ intro_block("Holdings status", intro, show_heading) }}
+<div class="metric-grid">
+  <div class="metric">
+    <span class="metric-label">Holdings</span>
+    <strong class="metric-value">{{ s.btc }} <small>BTC</small></strong>
+    <span class="metric-note">as of {{ s.as_of }}</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Current value</span>
+    <strong class="metric-value">{{ s.value_eur }} <small>EUR</small></strong>
+    <span class="metric-note">{{ s.price_eur }} EUR/BTC</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Cost basis</span>
+    <strong class="metric-value">{{ s.cost_eur }} <small>EUR</small></strong>
+    <span class="metric-note">average {{ s.avg_cost_eur }} EUR/BTC</span>
+  </div>
+  <div class="metric accent">
+    <span class="metric-label">Unrealised gain / loss</span>
+    <strong class="metric-value">{{ s.unrealized_eur }} <small>EUR</small></strong>
+    <span class="metric-note">{{ s.price_note }}</span>
+  </div>
+</div>
 <p>As of {{ s.as_of }} at {{ s.price_eur }} EUR/BTC ({{ s.price_note }}).
 Cost basis method: moving_average.</p>
 
-<table>
+<div class="table-wrap"><table>
   <tr><th>Item</th><th>Value</th></tr>
   <tr><td>Holdings (BTC)</td><td>{{ s.btc }}</td></tr>
   <tr><td>Cost basis (EUR)</td><td>{{ s.cost_eur }}</td></tr>
   <tr><td>Average cost (EUR/BTC)</td><td>{{ s.avg_cost_eur }}</td></tr>
   <tr><td>Current value (EUR)</td><td>{{ s.value_eur }}</td></tr>
   <tr><td>Unrealized gain/loss (EUR)</td><td>{{ s.unrealized_eur }}</td></tr>
-</table>
+</table></div>
 {% endmacro %}
 
-{% macro privacy_section(p, intro) %}
-{{ intro_block("Privacy report", intro) }}
+{% macro privacy_section(p, intro, show_heading=True) %}
+{{ intro_block("Privacy report", intro, show_heading) }}
+<div class="metric-grid">
+  {% for row in p.summary %}
+  <div class="metric">
+    <span class="metric-label">{{ row.status }}</span>
+    <strong class="metric-value">{{ row.count }}</strong>
+    <span class="metric-note">unspent outputs</span>
+  </div>
+  {% endfor %}
+</div>
 <p>Generated {{ p.generated_at }} by utxoproof {{ p.version }}.
 Unspent outputs by KYC status; mixing events highlighted (amber = originating).</p>
 
 <h3>KYC summary (unspent)</h3>
-<table>
+<div class="table-wrap"><table>
   <tr><th>Status</th><th>UTXOs</th></tr>
   {% for row in p.summary %}
   <tr><td>{{ row.status }}</td><td>{{ row.count }}</td></tr>
   {% endfor %}
-</table>
+</table></div>
 
 <h3>Mixing events</h3>
-<table>
+<div class="table-wrap"><table>
   <tr><th>Txid</th><th>Inputs</th><th>KYC in</th><th>Non-KYC in</th><th>Value (sat)</th><th>Originating</th></tr>
   {% for e in p.events %}
   <tr{% if e.originating %} class="mixing-origin"{% endif %}><td>{{ e.txid }}</td><td>{{ e.inputs }}</td><td>{{ e.kyc_inputs }}</td><td>{{ e.non_kyc_inputs }}</td><td>{{ e.value_sat }}</td><td>{{ e.originating }}</td></tr>
   {% endfor %}
-</table>
+</table></div>
 {% endmacro %}
 
-{% macro advisory_section(a, intro) %}
-{{ intro_block("Advisory", intro) }}
+{% macro advisory_section(a, intro, show_heading=True) %}
+{{ intro_block("Advisory", intro, show_heading) }}
+<div class="metric-grid">
+  <div class="metric accent">
+    <span class="metric-label">Tax cost if sold today</span>
+    <strong class="metric-value">{{ a.total_tax_eur }} <small>EUR</small></strong>
+    <span class="metric-note">all unspent outputs</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Estate candidates</span>
+    <strong class="metric-value">{{ a.estate_value_eur }} <small>EUR</small></strong>
+    <span class="metric-note">seasoned, low-tax lots</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Borrow candidates</span>
+    <strong class="metric-value">{{ a.borrow_value_eur }} <small>EUR</small></strong>
+    <span class="metric-note">collateral without a sale</span>
+  </div>
+</div>
 <p>As of {{ a.as_of }} at {{ a.current_price_eur }} EUR/BTC ({{ a.price_note }}).
 Ranked by tax cost if sold. Selling everything today would cost
 {{ a.total_tax_eur }} EUR in tax.</p>
 
 <h3>Per-UTXO table</h3>
 <p class="sub">Flags = what to do (recommendations). Tags = what it is (classification).</p>
-<table>
+<div class="table-wrap"><table>
   <tr><th>UTXO</th><th>Address</th><th>BTC</th><th>Holding (days)</th><th>Cost (EUR)</th><th>Value (EUR)</th><th>Gain (EUR)</th><th>Tax if sold (EUR)</th><th>KYC</th><th>What to do</th><th>What it is</th></tr>
   {% for u in a.advisories %}
   <tr><td>{{ u.utxo }}</td><td><code>{{ u.address }}</code></td><td>{{ u.btc }}</td><td>{{ u.holding_days }}</td><td>{{ u.cost_eur }}</td><td>{{ u.value_eur }}</td><td>{{ u.gain_eur }}</td><td>{{ u.tax_eur }}</td><td>{{ u.kyc }}</td><td>{{ u.flags }}</td><td>{{ u.tags }}</td></tr>
   {% endfor %}
-</table>
+</table></div>
 
 <h3>Summary</h3>
-<table>
+<div class="table-wrap"><table>
   <tr><th>Item</th><th>EUR</th></tr>
   <tr><td>Total tax cost of liquidating</td><td>{{ a.total_tax_eur }}</td></tr>
   <tr><td>Estate-candidate value</td><td>{{ a.estate_value_eur }}</td></tr>
   <tr><td>Borrow-candidate value</td><td>{{ a.borrow_value_eur }}</td></tr>
-</table>
+</table></div>
 {% endmacro %}
 
-{% macro provenance_section(p, intro) %}
-{{ intro_block("Provenance " ~ p.txid ~ ":" ~ p.vout, intro) }}
+{% macro provenance_section(p, intro, show_heading=True) %}
+{{ intro_block("Provenance " ~ p.txid ~ ":" ~ p.vout, intro, show_heading) }}
+<div class="metric-grid">
+  <div class="metric">
+    <span class="metric-label">Current amount</span>
+    <strong class="metric-value">{{ p.amount_btc }} <small>BTC</small></strong>
+    <span class="metric-note">{{ p.current_value_eur }} EUR at {{ p.current_price_eur }}/BTC</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">KYC status</span>
+    <strong class="metric-value">{{ p.kyc_status }}</strong>
+    <span class="metric-note">{{ p.kyc_fraction }} of value</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Days held</span>
+    <strong class="metric-value">{{ p.days_held }}</strong>
+    <span class="metric-note">since earliest traced acquisition</span>
+  </div>
+  <div class="metric accent">
+    <span class="metric-label">Bank-proven coverage</span>
+    <strong class="metric-value">{{ p.coverage_pct }}</strong>
+    <span class="metric-note">weakest tier {{ p.weakest_tier }}</span>
+  </div>
+</div>
 <p>Current amount: {{ p.amount_btc }} BTC ({{ p.current_value_eur }} EUR at {{ p.current_price_eur }}/BTC).
 KYC status: {{ p.kyc_status }} ({{ p.kyc_fraction }}).
 Days held since earliest traced acquisition: {{ p.days_held }}.
@@ -137,34 +229,34 @@ through exact, approximate, or allocated links. Weakest tier in a covered path:
 <span class="tier tier-{{ p.weakest_tier if p.weakest_tier != '—' else 'unresolved' }}">{{ p.weakest_tier }}</span>.
 Candidates never raise coverage.</p>
 {% if p.coverage_rows %}
-<table>
+<div class="table-wrap"><table>
   <tr><th>Source UTXO</th><th>Share of target</th><th>Tier</th></tr>
   {% for row in p.coverage_rows %}
   <tr><td><code>{{ row.utxo }}</code></td><td>{{ row.share }}</td><td><span class="tier tier-{{ row.tier }}">{{ row.tier }}</span></td></tr>
   {% endfor %}
-</table>
+</table></div>
 {% endif %}
 
 <h3>Provenance saga (all parents, oldest first)</h3>
 {% if p.truncated %}<p><strong>Note:</strong> saga truncated at {{ p.max_depth }} steps ({{ p.truncated_share }} of target value unresolved) — earliest history not shown. Re-run with a higher depth cap if needed.</p>{% endif %}
-<table>
+<div class="table-wrap"><table>
   <tr><th>Step</th><th>Date</th><th>Block</th><th>Event</th><th>Share</th><th>Attributed BTC</th><th>Full BTC</th><th>Attributed EUR</th><th>KYC</th><th>Evidence</th></tr>
   {% for s in p.steps %}
   <tr{% if s.mixing %} class="mixing"{% endif %}><td>{{ s.n }}</td><td>{{ s.date }}</td><td>{{ s.block }}</td><td>{{ s.event }}{% if s.source %} <span class="tier tier-unresolved">source</span>{% endif %}</td><td>{{ s.share }}</td><td>{{ s.attributed_btc }}</td><td>{{ s.btc }}</td><td>{{ s.attributed_eur }}</td><td>{{ s.kyc }}</td><td>{{ s.evidence }}</td></tr>
   {% endfor %}
-</table>
+</table></div>
 
 <h3>Cross-domain evidence</h3>
 <p class="sub">Funding direction: bank debit → exchange EUR deposit → trade → BTC
 withdrawal → chain receipt. These are persisted evidence links; ambiguous legs
 stay unresolved.</p>
 {% if p.evidence_links %}
-<table>
+<div class="table-wrap"><table>
   <tr><th>Layer</th><th>Confidence</th><th>From</th><th>To</th><th>EUR</th><th>Sats</th><th>Reason</th><th>Evidence</th></tr>
   {% for l in p.evidence_links %}
   <tr><td>{{ l.layer }}</td><td><span class="tier tier-{{ l.confidence }}">{{ l.confidence }}</span>{% if l.origin == 'user' %} <span class="sub">(user)</span>{% endif %}</td><td><code>{{ l.from }}</code></td><td><code>{{ l.to }}</code></td><td>{{ l.amount_eur }}</td><td>{{ l.amount_sat }}</td><td>{{ l.note }}</td><td>{{ l.evidence }}</td></tr>
   {% endfor %}
-</table>
+</table></div>
 {% else %}
 <p>No cross-domain evidence links yet. Supply <code>--ledgers</code> and bank
 statements (or run the dashboard with them) to rebuild the bank/exchange layers.</p>
@@ -172,12 +264,12 @@ statements (or run the dashboard with them) to rebuild the bank/exchange layers.
 
 <h3>Candidate links (never asserted)</h3>
 {% if p.candidate_links %}
-<table>
+<div class="table-wrap"><table>
   <tr><th>Layer</th><th>From</th><th>To</th><th>EUR</th><th>Sats</th><th>Reason</th><th>Evidence</th></tr>
   {% for l in p.candidate_links %}
   <tr><td>{{ l.layer }}</td><td><code>{{ l.from }}</code></td><td><code>{{ l.to }}</code></td><td>{{ l.amount_eur }}</td><td>{{ l.amount_sat }}</td><td>{{ l.note }}</td><td>{{ l.evidence }}</td></tr>
   {% endfor %}
-</table>
+</table></div>
 {% else %}
 <p>No candidate links. Unmatched or ambiguous funding has no asserted edge.</p>
 {% endif %}
@@ -192,21 +284,21 @@ statements (or run the dashboard with them) to rebuild the bank/exchange layers.
 {% endif %}
 
 <h3>Branch detail (consolidations)</h3>
-<table>
+<div class="table-wrap"><table>
   <tr><th>Step</th><th>Parent UTXO</th><th>BTC</th><th>Share</th><th>KYC</th></tr>
   {% for b in p.branches %}
   <tr><td>{{ b.step }}</td><td><code>{{ b.utxo }}</code></td><td>{{ b.btc }}</td><td>{{ b.share }}</td><td>{{ b.kyc }}</td></tr>
   {% endfor %}
-</table>
+</table></div>
 
 <h3>Fan-out siblings</h3>
 {% if p.siblings %}
-<table>
+<div class="table-wrap"><table>
   <tr><th>Step</th><th>Sibling UTXO</th><th>BTC</th><th>KYC</th></tr>
   {% for b in p.siblings %}
   <tr><td>{{ b.step }}</td><td><code>{{ b.utxo }}</code></td><td>{{ b.btc }}</td><td>{{ b.kyc }}</td></tr>
   {% endfor %}
-</table>
+</table></div>
 {% else %}
 <p>No sibling outputs in this ancestry.</p>
 {% endif %}
@@ -220,62 +312,79 @@ statements (or run the dashboard with them) to rebuild the bank/exchange layers.
 
 <h3>Attachments</h3>
 {% if p.attachments %}
-<table>
+<div class="table-wrap"><table>
   <tr><th>File</th><th>Transaction</th><th>Note</th><th>Preview</th></tr>
   {% for a in p.attachments %}
   <tr><td>{% if a.href %}<a href="{{ a.href }}"><code>{{ a.filename }}</code></a>{% else %}<code>{{ a.filename }}</code>{% endif %}</td><td><code>{{ a.txid }}</code></td><td>{{ a.note }}</td><td>{% if a.thumbnail %}<img src="{{ a.thumbnail }}" alt="{{ a.filename }}" style="max-width:320px;">{% else %}—{% endif %}</td></tr>
   {% endfor %}
-</table>
+</table></div>
 {% else %}
 <p>No attachments registered for this chain. Add scans or confirmations with <code>utxoproof attach --file … --tx …</code>.</p>
 {% endif %}
 {% endmacro %}
 
-{% macro descriptors_section(d, intro) %}
-{{ intro_block("Descriptor check", intro) }}
+{% macro descriptors_section(d, intro, show_heading=True) %}
+{{ intro_block("Descriptor check", intro, show_heading) }}
 <p>Addresses below are derived live by <code>utxoproof.descriptors</code> from the
 BIP84 spec-vector account xpub (<code>{{ d.xpub }}</code>, fingerprint
 <code>{{ d.fingerprint }}</code>). They must match the BIP84 vectors exactly.</p>
 
 <h3>Descriptors (Bitcoin Core import)</h3>
-<table>
+<div class="table-wrap"><table>
   <tr><th>Chain</th><th>Descriptor</th></tr>
   <tr><td>external</td><td><code>{{ d.external }}</code></td></tr>
   <tr><td>change</td><td><code>{{ d.change }}</code></td></tr>
-</table>
+</table></div>
 
 <h3>First addresses (mainnet)</h3>
-<table>
+<div class="table-wrap"><table>
   <tr><th>Path</th><th>Address</th></tr>
   {% for row in d.addresses %}
   <tr><td>{{ row.path }}</td><td><code>{{ row.address }}</code></td></tr>
   {% endfor %}
-</table>
+</table></div>
 {% endmacro %}
 
-{% macro alltime_section(a, intro) %}
-{{ intro_block("All-time summary", intro) }}
+{% macro alltime_section(a, intro, show_heading=True) %}
+{{ intro_block("All-time summary", intro, show_heading) }}
+<div class="metric-grid">
+  <div class="metric accent">
+    <span class="metric-label">Realised gains</span>
+    <strong class="metric-value">{{ a.total_gain }} <small>EUR</small></strong>
+    <span class="metric-note">all imported years</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Remaining inventory</span>
+    <strong class="metric-value">{{ a.inventory_btc }} <small>BTC</small></strong>
+    <span class="metric-note">unspent cost lots</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Inventory cost</span>
+    <strong class="metric-value">{{ a.inventory_cost }} <small>EUR</small></strong>
+    <span class="metric-note">moving-average cost basis</span>
+  </div>
+</div>
 <p>Generated {{ a.generated_at }} by utxoproof {{ a.version }}.
 Realised gains per year plus remaining lot inventory (cost basis only).</p>
 
 <h3>Per-year realised gains</h3>
-<table>
+<div class="table-wrap"><table>
   <tr><th>Year</th><th>Disposals</th><th>Gain (EUR)</th></tr>
   {% for row in a.years %}
   <tr><td>{{ row.year }}</td><td>{{ row.disposals }}</td><td>{{ row.gain }}</td></tr>
   {% endfor %}
   <tr><td><strong>Total</strong></td><td></td><td><strong>{{ a.total_gain }}</strong></td></tr>
-</table>
+</table></div>
 
 <h3>Remaining inventory</h3>
-<table>
+<div class="table-wrap"><table>
   <tr><th>BTC</th><th>Cost basis (EUR)</th></tr>
   <tr><td>{{ a.inventory_btc }}</td><td>{{ a.inventory_cost }}</td></tr>
-</table>
+</table></div>
 {% endmacro %}
 
-{% macro overview_section(o, intro) %}
-{{ intro_block("Portfolio overview", intro) }}
+{% macro overview_section(o, intro, show_heading=True) %}
+{{ intro_block("Portfolio overview", intro, show_heading) }}
 <p>As of {{ o.as_of }} at {{ o.current_price_eur }} EUR/BTC ({{ o.price_note }}).
 Click an account to drill into its UTXOs, then a UTXO for provenance.</p>
 
@@ -303,7 +412,7 @@ Click an account to drill into its UTXOs, then a UTXO for provenance.</p>
 </div>
 
 <h3>BTC/EUR daily close, last 12 months</h3>
-<div>{{ o.price_history_svg | safe }}</div>
+<div class="chart-panel">{{ o.price_history_svg | safe }}</div>
 <p class="sub">Daily close in EUR/BTC from the vendored history (Kraken native, blockchain.info x ECB before Oct 2024).</p>
 
 <h3>Holdings by tax behavior</h3>
@@ -331,12 +440,12 @@ Click an account to drill into its UTXOs, then a UTXO for provenance.</p>
 </div>
 
 <h3>Accounts</h3>
-<table>
+<div class="table-wrap"><table>
   <tr><th>Account</th><th>Type</th><th>UTXOs</th><th>BTC</th><th>Value (EUR)</th><th>Share</th></tr>
   {% for e in o.entities %}
   <tr><td><a href="{{ e.href }}">{{ e.label }}</a></td><td>{{ e.kind }}</td><td>{{ e.utxos }}</td><td>{{ e.btc }}</td><td>{{ e.value }}</td><td>{{ e.share }}</td></tr>
   {% endfor %}
-</table>
+</table></div>
 
 {% if o.reports %}
 <h3>Related reports</h3>
@@ -348,42 +457,68 @@ Click an account to drill into its UTXOs, then a UTXO for provenance.</p>
 {% endif %}
 {% endmacro %}
 
-{% macro entity_section(e, intro) %}
-{{ intro_block(e.label, intro) }}
+{% macro entity_section(e, intro, show_heading=True) %}
+{{ intro_block(e.label, intro, show_heading) }}
 <p><a href="{{ e.back_href }}">← portfolio overview</a></p>
+<div class="metric-grid">
+  <div class="metric accent">
+    <span class="metric-label">Total value</span>
+    <strong class="metric-value">{{ e.total_eur }} <small>EUR</small></strong>
+    <span class="metric-note">{{ e.kind }}</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">UTXOs</span>
+    <strong class="metric-value">{{ e.utxos | length }}</strong>
+    <span class="metric-note">owned outputs in this account</span>
+  </div>
+  {% if e.holdings %}
+  <div class="metric">
+    <span class="metric-label">Broker holdings</span>
+    <strong class="metric-value">{{ e.info_value_eur }} <small>EUR</small></strong>
+    <span class="metric-note">informational only</span>
+  </div>
+  {% endif %}
+  {% if e.fiat_rows %}
+  <div class="metric">
+    <span class="metric-label">Cash positions</span>
+    <strong class="metric-value">{{ e.fiat_rows | length }}</strong>
+    <span class="metric-note">fiat balances or statement rows</span>
+  </div>
+  {% endif %}
+</div>
 <p>{{ e.kind }} — {{ e.detail }} Total value: {{ e.total_eur }} EUR.{% if e.holdings %} Broker holdings (informational): {{ e.info_value_eur }} EUR.{% endif %}</p>
 {% if e.review %}<p>Review: <a href="{{ e.review.href }}">{{ e.review.title }}</a></p>{% endif %}
 
 {% if e.utxos %}
 <h3>UTXOs (click for provenance)</h3>
 <p class="sub">Flags = what to do (recommendations). Tags = what it is (classification).</p>
-<table>
+<div class="table-wrap"><table>
   <tr><th>UTXO</th><th>Label</th><th>Address</th><th>BTC</th><th>Value (EUR)</th><th>KYC</th><th>Coverage</th><th>What to do</th><th>What it is</th></tr>
   {% for u in e.utxos %}
   <tr><td><a href="{{ u.href }}"><code>{{ u.id }}</code></a></td><td>{{ u.labels }}</td><td><code>{{ u.address }}</code></td><td>{{ u.btc }}</td><td>{{ u.value }}</td><td>{{ u.kyc }}</td><td><span class="tier tier-{{ u.coverage_tier }}">{{ u.coverage }}</span></td><td>{{ u.flags }}</td><td>{{ u.tags }}</td></tr>
   {% endfor %}
-</table>
-<div>{{ e.utxo_bars | safe }}</div>
+</table></div>
+<div class="chart-panel">{{ e.utxo_bars | safe }}</div>
 {% endif %}
 
 {% if e.holdings %}
 <h3>Broker holdings (informational)</h3>
 <p class="sub">Kept out of Bitcoin pooling and tax figures until Belgian stock rules are specified.</p>
-<table>
+<div class="table-wrap"><table>
   <tr><th>Symbol</th><th>Quantity</th><th>Value (EUR)</th></tr>
   {% for h in e.holdings %}
   <tr><td>{{ h.symbol }}</td><td>{{ h.quantity }}</td><td>{{ h.value }}</td></tr>
   {% endfor %}
-</table>
+</table></div>
 {% endif %}
 
 {% if e.fiat_rows %}
 <h3>Cash positions</h3>
-<table>
+<div class="table-wrap"><table>
   <tr><th>Note</th><th>Amount (EUR)</th></tr>
   {% for f in e.fiat_rows %}
   <tr><td>{{ f.note }}</td><td>{{ f.amount }}</td></tr>
   {% endfor %}
-</table>
+</table></div>
 {% endif %}
 {% endmacro %}

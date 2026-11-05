@@ -170,6 +170,10 @@ def _build_v8_demo(out: Path) -> list[tuple[str, str]]:
                 no_zip=True,
                 demo_notice=V8_NOTICE,
                 only=only,
+                nav_extra=(
+                    ("Demo home", "../index.html"),
+                    ("Getting Started guide", "../guide/index.html"),
+                ),
             )
 
         if run(options()) != 0:
@@ -204,72 +208,7 @@ def _build_v8_demo(out: Path) -> list[tuple[str, str]]:
     ]
 
 
-INDEX_TEMPLATE = """<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>utxoproof demo reports</title>
-<style>
-  :root { color-scheme: light; }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: #f7f4ee; color: #11161c;
-    font-family: "Inter", "Segoe UI", system-ui, sans-serif; line-height: 1.55; }
-  .wrap { max-width: 880px; margin: 0 auto; padding: 54px 22px 70px; }
-  .kicker { margin: 0 0 8px; color: #9a4d06; font-size: 11px; font-weight: 750;
-    letter-spacing: .12em; text-transform: uppercase; }
-  h1 { margin: 0 0 10px; font-family: Georgia, serif; font-weight: 600;
-    font-size: clamp(2.2rem, 6vw, 3.4rem); line-height: 1; letter-spacing: -.035em; }
-  .sub { max-width: 66ch; margin: 0 0 26px; color: #616b76; }
-  .guide-card { display: flex; flex-wrap: wrap; align-items: center;
-    justify-content: space-between; gap: 16px; margin: 26px 0 18px; padding: 22px 24px;
-    border-radius: 18px; color: #fff;
-    background: radial-gradient(circle at 90% 20%, rgba(247,147,26,.28), transparent 42%),
-      linear-gradient(135deg, #0b1220, #14243a);
-    box-shadow: 0 16px 40px rgba(17,22,28,.14); }
-  .guide-card strong { display: block; font-size: 18px; margin-bottom: 3px; }
-  .guide-card span { color: #b9c4d2; font-size: 13px; }
-  .guide-card a { display: inline-flex; align-items: center; gap: 7px;
-    padding: 10px 15px; border-radius: 10px; color: #16120b; text-decoration: none;
-    background: #f7931a; font-size: 13px; font-weight: 750; white-space: nowrap; }
-  .guide-card a:hover { background: #ffad3d; }
-  .demo-banner { background: #fff3cd; border: 2px solid #e8a13d;
-    border-radius: 10px; padding: 12px 16px; margin: 18px 0 28px;
-    font-weight: 700; text-align: center; color: #4e350b; }
-  h2 { margin: 30px 0 10px; font-size: 15px; letter-spacing: .08em;
-    text-transform: uppercase; color: #616b76; }
-  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
-  li a { display: block; padding: 11px 14px; border: 1px solid #e5dfd4;
-    border-radius: 10px; background: #fff; color: #11161c; text-decoration: none;
-    font-size: 14px; }
-  li a:hover { border-color: #c9c2b6; box-shadow: 0 6px 16px rgba(17,22,28,.06); }
-  .footer { margin-top: 34px; padding-top: 18px; border-top: 1px solid #e5dfd4;
-    color: #7a8491; font-size: 12px; }
-</style>
-</head>
-<body>
-<div class="wrap">
-<p class="kicker">utxoproof</p>
-<h1>Demo reports</h1>
-<p class="sub">Synthetic reports generated offline from repo fixtures. Every page is dummy data:
-use them to inspect the shape of the output, not to infer real holdings or tax results.</p>
-<div class="guide-card">
-  <div><strong>New here, with a lot of history?</strong>
-    <span>Read the illustrated Getting Started guide: inventory, pilot,
-    reconcile, scale.</span></div>
-  <a href="guide/index.html">Read the guide <span aria-hidden="true">→</span></a>
-</div>
-<div class="demo-banner">DEMO \u2014 dummy data on every page. Not real.</div>
-<h2>All reports</h2>
-<ul>
-{links}
-</ul>
-<p class="footer">Static HTML, no JavaScript. The v8 demo runs offline with a seeded chain graph;
-the older fixture reports are retained for comparison. Not tax advice.</p>
-</div>
-</body>
-</html>
-"""
+INDEX_TEMPLATE = (ROOT / "scripts" / "demo_index.html").read_text(encoding="utf-8")
 
 
 def main() -> int:
@@ -286,6 +225,8 @@ def main() -> int:
     from utxoproof.reports import site_nav
 
     nav_pages: list[tuple[str, str]] = [
+        ("Demo home", "index.html"),
+        ("Getting Started guide", "guide/index.html"),
         ("Full report (everything)", "full/fullreport.html"),
         ("Portfolio overview", "overview/overview.html"),
     ]
@@ -742,15 +683,28 @@ def _write_docs_page(out: Path) -> None:
             source.read_text(encoding="utf-8"), extensions=["tables", "fenced_code"]
         )
     css = (
-        "body{font-family:sans-serif;max-width:900px;margin:2em auto;"
-        "padding:0 1em;color:#222;}"
-        "pre{background:#f6f6f6;padding:1em;overflow-x:auto;}"
-        "code{word-break:break-all;}"
-        ".demo-banner{background:#fff3cd;border:2px solid #e8a13d;"
-        "border-radius:8px;padding:0.8em 1em;margin:1em 0;"
-        "font-weight:bold;text-align:center;}"
-        ".guide-banner{background:#e2f5f0;border:1px solid #b7e4c8;"
-        "border-radius:8px;padding:0.8em 1em;margin:1em 0;}"
+        ".docs-main{max-width:980px;margin:0 auto;padding:34px 28px 88px;}"
+        ".docs-main h1{margin:12px 0 18px;font-family:var(--serif);"
+        "font-size:clamp(2.4rem,5vw,3.8rem);font-weight:600;line-height:1;"
+        "letter-spacing:-.04em;}"
+        ".docs-main h2{font-family:var(--serif);font-size:clamp(1.7rem,3vw,2.3rem);"
+        "font-weight:600;letter-spacing:-.03em;}"
+        ".docs-main h3{margin-top:30px;}"
+        ".docs-main table{margin:18px 0;border:1px solid var(--line);"
+        "border-radius:14px;background:var(--card);overflow:hidden;}"
+        ".docs-main th{padding:11px 13px;background:#f4f1eb;color:var(--muted);"
+        "font-size:10px;font-weight:750;letter-spacing:.06em;text-align:left;"
+        "text-transform:uppercase;}"
+        ".docs-main td{padding:12px 13px;border-top:1px solid var(--line);"
+        "vertical-align:top;}"
+        ".docs-main pre{font-size:12px;}"
+        ".docs-main code{word-break:break-word;}"
+        ".demo-banner{margin:0 0 24px;padding:13px 17px;border:1px solid #f3d3a5;"
+        "border-left:4px solid var(--orange);border-radius:0 13px 13px 0;"
+        "background:var(--orange-soft);color:#56320d;font-size:13px;font-weight:700;}"
+        ".guide-banner{margin:0 0 30px;padding:14px 18px;border:1px solid #b7e4c8;"
+        "border-radius:13px;background:var(--green-soft);color:#0b4c32;font-size:13.5px;}"
+        "@media(max-width:680px){.docs-main{padding:26px 18px 70px;}}"
     )
     banner = (
         '<div class="demo-banner">DEMO \u2014 docs for the demo site; '
@@ -763,10 +717,22 @@ def _write_docs_page(out: Path) -> None:
         '<html lang="en"><head><meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
         "<title>utxoproof user guide</title>",
+        '<link rel="stylesheet" href="../guide/style.css">',
         f"<style>{css}</style></head><body>",
+        '<a class="skip-link" href="#docs">Skip to the reference</a>',
+        '<header class="topbar"><div class="topbar-inner">'
+        '<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true">₿</span>'
+        '<span>utxoproof</span><span class="brand-sub">reference</span></a>'
+        '<nav class="topnav" aria-label="Site links">'
+        '<a href="../guide/index.html">Getting Started</a>'
+        '<a href="../v8/overview/overview.html">Live dashboard</a>'
+        '<a href="../index.html">Demo home</a>'
+        '<a class="github" href="https://github.com/natashaklum/utxoproof">GitHub '
+        '<span aria-hidden="true">↗</span></a></nav></div></header>',
+        '<main id="docs" class="docs-main">',
         banner,
         body,
-        "</body></html>",
+        "</main></body></html>",
     ]
     docs = out / "docs"
     docs.mkdir(parents=True, exist_ok=True)

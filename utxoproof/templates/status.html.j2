@@ -1,7 +1,8 @@
 {% extends "base.html.j2" %}
 {% from "sections.html.j2" import status_section %}
 {% block title %}utxoproof holdings status{% endblock %}
+{% block kicker %}Holdings snapshot{% endblock %}
+{% block heading %}utxoproof holdings status{% endblock %}
 {% block content %}
-<h1>utxoproof holdings status</h1>
-{{ status_section(status, intro) }}
+{{ status_section(status, intro, false) }}
 {% endblock %}

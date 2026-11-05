@@ -1,7 +1,8 @@
 {% extends "base.html.j2" %}
 {% from "sections.html.j2" import advisory_section %}
 {% block title %}utxoproof advisory{% endblock %}
+{% block kicker %}Decision support{% endblock %}
+{% block heading %}utxoproof advisory{% endblock %}
 {% block content %}
-<h1>utxoproof advisory</h1>
-{{ advisory_section(advisory, intro) }}
+{{ advisory_section(advisory, intro, false) }}
 {% endblock %}

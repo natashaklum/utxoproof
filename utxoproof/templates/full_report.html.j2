@@ -1,8 +1,9 @@
 {% extends "base.html.j2" %}
 {% from "sections.html.j2" import tax_section, status_section, alltime_section, privacy_section, advisory_section, provenance_section, descriptors_section, overview_section %}
 {% block title %}{{ title }}{% endblock %}
+{% block kicker %}Complete report{% endblock %}
+{% block heading %}{{ title }}{% endblock %}
 {% block content %}
-<h1>{{ title }}</h1>
 <div class="report-intro">{{ intro }}</div>
 
 <div class="toc">

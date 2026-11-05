@@ -1,7 +1,8 @@
 {% extends "base.html.j2" %}
 {% from "sections.html.j2" import descriptors_section %}
 {% block title %}utxoproof descriptor check{% endblock %}
+{% block kicker %}Deterministic check{% endblock %}
+{% block heading %}utxoproof descriptor check{% endblock %}
 {% block content %}
-<h1>utxoproof descriptor check</h1>
-{{ descriptors_section(descriptors, intro) }}
+{{ descriptors_section(descriptors, intro, false) }}
 {% endblock %}
