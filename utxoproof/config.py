@@ -7,11 +7,12 @@ arrive with their sprints. Missing file -> defaults; unknown keys ignored.
 from __future__ import annotations
 
 import os
-import tomllib
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+
+from utxoproof.toml_utils import TomlError, loads_lenient
 
 
 @dataclass
@@ -67,6 +68,7 @@ class Config:
     owner: OwnerConfig = field(default_factory=OwnerConfig)
     chain: ChainConfig = field(default_factory=ChainConfig)
     reporting: ReportingConfig = field(default_factory=ReportingConfig)
+    warnings: list[str] = field(default_factory=list)
 
 
 def _decimal(value: object, default: Decimal) -> Decimal:
@@ -93,12 +95,24 @@ def find_config(path: str | Path | None = None) -> Path | None:
 
 
 def load_config(path: str | Path | None = None) -> Config:
-    """Load utxoproof.toml; fall back to defaults when absent."""
+    """Load utxoproof.toml; fall back to defaults when absent.
+
+    Stray invalid lines are skipped with a warning instead of aborting;
+    ``Config.warnings`` carries them to the CLI/discovery output.
+    """
     data: dict[str, Any] = {}
+    warnings: list[str] = []
     found = find_config(path)
     if found is not None:
-        with open(found, "rb") as f:
-            loaded = tomllib.load(f)
+        try:
+            raw = found.read_text(encoding="utf-8")
+            loaded, warnings = loads_lenient(raw, str(found))
+        except (OSError, UnicodeDecodeError) as exc:
+            warnings.append(f"{found}: could not read config: {exc}")
+            loaded = {}
+        except TomlError as exc:
+            warnings.append(f"{exc}; using defaults")
+            loaded = {}
         if isinstance(loaded, dict):
             data = loaded
 
@@ -143,4 +157,5 @@ def load_config(path: str | Path | None = None) -> Config:
             as_of=str(reporting.get("as_of", "")),
             tax_year=str(reporting.get("tax_year", "")),
         ),
+        warnings=warnings,
     )

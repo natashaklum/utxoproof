@@ -138,7 +138,12 @@ input/
 
 Account kinds are `wallet` (on-chain), `bank`, `credit_card` (a liability),
 `exchange`, and `broker` (informational only). The folder name is the default
-account id; add `id = "..."` to override it. Minimal manifests:
+account id; add `id = "..."` to override it. Valid TOML comments, unknown keys
+and lists are fine. If a hand-edited manifest contains a stray legacy line (an
+old YAML-style `key: value`, a malformed list, a duplicate key), utxoproof
+skips that line with a `WARNING` and continues; required fields such as
+`kind`, a descriptor, `profile` or `ledgers` still error normally. Minimal
+manifests:
 
 ```toml
 # accounts/ledger-main/account.toml

@@ -55,6 +55,9 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   `wallet`, `bank`, `credit_card`, `exchange`, `broker`. All metadata and
   type-specific files stay in the account folder; no central account list.
   Generated DB/reports stay in `--data-dir`, never in `input/`.
+- Manifests/config use `utxoproof/toml_utils.py`: valid comments, unknown keys
+  and lists parse normally; stray invalid lines are skipped with `WARNING`
+  instead of aborting. Required fields still fail validation.
 - Chain crypto (descriptor parsing, address/script derivation) goes through
   `utxoproof/descriptors.py` (embit); new vectors must be spec vectors,
   hand-verified before pinning. Exported descriptors (multisig included) are

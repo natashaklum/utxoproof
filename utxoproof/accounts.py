@@ -10,7 +10,6 @@ from __future__ import annotations
 import datetime
 import glob
 import re
-import tomllib
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -24,6 +23,7 @@ from utxoproof.descriptors import (
     normalize_descriptor_pair,
 )
 from utxoproof.paths import data_dir
+from utxoproof.toml_utils import TomlError, loads_lenient
 
 
 class AccountError(ValueError):
@@ -148,16 +148,18 @@ def _reject_private_keys(text: str, where: Path) -> None:
         )
 
 
-def _read_manifest(path: Path) -> dict[str, Any]:
+def _read_manifest(path: Path, warnings: list[str] | None = None) -> dict[str, Any]:
     try:
         raw = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise AccountError(f"{path}: {exc}") from exc
     _reject_private_keys(raw, path)
     try:
-        data = tomllib.loads(raw)
-    except tomllib.TOMLDecodeError as exc:
-        raise AccountError(f"{path}: invalid TOML: {exc}") from exc
+        data, parse_warnings = loads_lenient(raw, str(path))
+    except TomlError as exc:
+        raise AccountError(str(exc)) from exc
+    if warnings is not None:
+        warnings.extend(parse_warnings)
     if not isinstance(data, dict):
         raise AccountError(f"{path}: account.toml must contain a table")
     return data
@@ -294,13 +296,16 @@ def _multi_paths(data: dict[str, Any], account_dir: Path, key: str) -> tuple[Pat
     return tuple(out)
 
 
-def load_account(account_dir: str | Path) -> Account:
-    """Load one ``account.toml`` folder."""
+def load_account(account_dir: str | Path, warnings: list[str] | None = None) -> Account:
+    """Load one ``account.toml`` folder.
+
+    ``warnings`` (when supplied) collects stray TOML lines that were skipped.
+    """
     directory = Path(account_dir).expanduser()
     manifest = directory / "account.toml"
     if not manifest.is_file():
         raise AccountError(f"{directory}: missing account.toml")
-    data = _read_manifest(manifest)
+    data = _read_manifest(manifest, warnings)
     kind = str(data.get("kind", "")).strip()
     if kind not in ACCOUNT_KINDS:
         raise AccountError(
@@ -402,7 +407,7 @@ def load_registry(root: str | Path | None = None) -> Registry:
     if not accounts_dir.is_dir():
         raise AccountError(f"{base}: missing accounts/ directory")
     accounts: list[Account] = []
-    warnings: list[str] = []
+    warnings: list[str] = list(config.warnings)
     errors: list[str] = []
     seen_ids: set[str] = set()
     for directory in sorted(accounts_dir.iterdir()):
@@ -411,7 +416,7 @@ def load_registry(root: str | Path | None = None) -> Registry:
                 warnings.append(f"ignored {directory.name}: no account.toml")
             continue
         try:
-            account = load_account(directory)
+            account = load_account(directory, warnings)
         except AccountError as exc:
             errors.append(str(exc))
             continue

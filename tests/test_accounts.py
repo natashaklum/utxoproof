@@ -144,6 +144,38 @@ def test_bank_credit_card_exchange_and_broker_manifests(tmp_path: Path) -> None:
     assert {f.entity_id for f in fiat} == {"kbc", "visa"}
 
 
+def test_manifest_ignores_legacy_junk_lines(tmp_path: Path) -> None:
+    root = _input_tree(tmp_path)
+    folder = root / "accounts" / "kbc"
+    (folder / "statements").mkdir(parents=True)
+    (folder / "statements" / "jan.csv").write_text("date,amount\n")
+    (folder / "account.toml").write_text(
+        'kind = "bank"\n'
+        'label = "KBC"\n'
+        'profile = "kbc-bankaccount"\n'
+        "# old comment from a previous setup\n"
+        "notes: migrated from v7\n"
+        "tags = [fiat, legacy]\n"
+        'extra = ["valid", "list"]\n',
+        encoding="utf-8",
+    )
+    registry = load_registry(root)
+    assert registry.ok, registry.errors
+    assert registry.get("kbc").tags == ()
+    assert any("ignored invalid TOML line 5" in warning for warning in registry.warnings)
+    assert any("ignored invalid TOML line 6" in warning for warning in registry.warnings)
+
+
+def test_manifest_with_broken_required_line_still_fails(tmp_path: Path) -> None:
+    root = _input_tree(tmp_path)
+    folder = root / "accounts" / "broken"
+    folder.mkdir(parents=True)
+    (folder / "account.toml").write_text('label = "Broken"\nkind: wallet\n', encoding="utf-8")
+    registry = load_registry(root)
+    assert not registry.ok
+    assert any("kind must be one of" in error for error in registry.errors)
+
+
 def test_persist_registry_and_attribute_outputs(tmp_path: Path) -> None:
     root = _input_tree(tmp_path)
     _wallet(root)

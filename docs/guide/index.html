@@ -728,6 +728,7 @@ trades = ["trades.csv"]</pre>
               <tbody>
                 <tr><td><code>no valid accounts found</code></td><td>No <code>accounts/*/account.toml</code> under the input tree.</td><td>Check the path passed to <code>--input</code>; every account needs a manifest.</td></tr>
                 <tr><td><code>missing account.toml</code></td><td>A folder exists but is not an account.</td><td>Add the manifest or move the folder out of <code>accounts/</code>.</td></tr>
+                <tr><td><code>ignored invalid TOML line</code></td><td>A stray legacy/YAML line, duplicate key, or malformed optional list.</td><td>Comment it out or leave it: utxoproof skips it with a warning. Required fields still error.</td></tr>
                 <tr><td><code>no statement CSV files matched</code></td><td>The bank/card folder has no CSV under the pattern.</td><td>Add statements or set <code>statements</code> explicitly; a bank folder without statements is invalid.</td></tr>
                 <tr><td><code>wallet needs descriptors or xpub</code></td><td>No ownership source in the wallet manifest.</td><td>Export a watch-only descriptor, or add <code>xpub</code> + <code>fingerprint</code> + <code>purpose</code>.</td></tr>
                 <tr><td><code>derive the same script</code></td><td>The same wallet is in two account folders.</td><td>Remove the duplicate. One output can have only one owner.</td></tr>

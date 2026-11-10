@@ -103,6 +103,19 @@ def test_config_defaults_and_overrides(tmp_path: Path) -> None:
     assert cls == BelgianTaxClass.SPECULATOR
 
 
+def test_config_ignores_stray_legacy_lines(tmp_path: Path) -> None:
+    toml_path = tmp_path / "utxoproof.toml"
+    toml_path.write_text(
+        '[taxpayer]\nreference = "BE-TEST"\nold_note: this used to be here\n'
+        "[classifier]\nused_leverage = true\n",
+        encoding="utf-8",
+    )
+    config = load_config(toml_path)
+    assert config.taxpayer.reference == "BE-TEST"
+    assert config.classifier.used_leverage is True
+    assert any("ignored invalid TOML line 3" in warning for warning in config.warnings)
+
+
 def test_find_config_search_order(tmp_path: Path, monkeypatch) -> None:
     from utxoproof.config import find_config
 
