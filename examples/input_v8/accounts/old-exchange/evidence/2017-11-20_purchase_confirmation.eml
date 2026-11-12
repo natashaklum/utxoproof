@@ -1,0 +1,20 @@
+From: Old Exchange <no-reply@old-exchange.example>
+To: Demo Owner <owner@example.invalid>
+Date: Mon, 20 Nov 2017 18:42:00 +0100
+Subject: Your purchase confirmation - 0.25 BTC
+
+Hello Demo Owner,
+
+Thank you for your purchase.
+
+Order reference : OLD-2017-11-20-0001
+Date            : 2017-11-20
+Amount          : 0.25 BTC
+Price           : 6000.00 EUR/BTC
+Trade value     : 1500.00 EUR
+Fee             : 12.50 EUR
+Total charged   : 1512.50 EUR
+
+The Bitcoin was credited to your exchange account.
+
+This is a synthetic demo email. It contains no real personal data.

@@ -89,8 +89,8 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   `setup`/`sync`). `examples/run.sh` is a thin v8 wrapper; the old self-contained
   v7 script is `examples/run_legacy.sh` and owns `MODE=prepare/refresh/clean`,
   `WALLETS`, `BANK_CSV` and fixture tests.
-- Menus: v8 `run` uses `account_site_pages` (`overview/`, `bank/`, year reports);
-  the legacy `run_legacy.sh` layout keeps `run_site_pages`
+- Menus: v8 `run` uses `account_site_pages` (`overview/`, `bank/`, `exchange/`,
+  year reports); the legacy `run_legacy.sh` layout keeps `run_site_pages`
   (`portfolio/overview/`, `current-status/`). Don't cross-wire them.
 - Demos: `scripts/build_demo.py --out site` renders legacy fixture pages plus an
   offline, seeded v8 run under `site/v8/` (GitHub Pages workflow on `main`,
@@ -133,11 +133,19 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   Human artifacts go through `utxoproof attach` into `evidence/<year>/`
   (hash + tx link in `evidence_links`); provenance appends them with
   thumbnails for small images, links otherwise.
+  v8 `run` also writes `imports/exchange-trades.csv`,
+  `exchange-transfers.csv`, `exchange-receipts.csv` and `exchange-links.csv`
+  (trade → bank row → receipt → transfer/chain join); all enter the year ZIP.
+  Exchange review pages copy receipt PDFs under
+  `reports/exchange/receipts/<account>/` so the static site stays offline.
 - One data dir: `utxoproof/paths.py` (`--data-dir` > `$UTXOPROOF_DATA_DIR` >
   `~/.utxoproof`); `--db`/`--evidence-dir` override per call.
 - v8 examples live in `examples/input_v8/`; `tests/test_runner.py` covers
   discovery/plan/offline run and `tests/test_run_wrapper.py` covers the thin
-  `run.sh`. Legacy `run_legacy.sh` is covered by `tests/test_run_scripts.py`
+  `run.sh`. `accounts/bisq/` (real headers + synthetic SEPA PDFs) and
+  `accounts/old-exchange/` (manual events + `.eml` evidence) exercise the
+  exchange review; `tests/test_bisq_receipts.py` covers both. Legacy
+  `run_legacy.sh` is covered by `tests/test_run_scripts.py`
   (`MODE=prepare` stops on shortfalls unless `ALLOW_SHORTFALLS=1`,
   `MODE=refresh` idempotent, `MODE=clean` lists generated artifacts and deletes
   only with `CONFIRM=1`; `WALLETS`, `BANK_CSV` and fixture end-to-end runs).
@@ -180,9 +188,23 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   example at `utxoproof.example.toml`). `utxoproof report --config` applies
   communal rate + classifier flags. Progressive speculator rates are NOT
   computed (needs annual bracket table); the report says so.
-- Exchanges: `kraken_csv` / `coinbase_csv` / `binance_csv` / `bisq_csv` yield
-  `exchange.ExchangeTx` (Bisq defaults non_kyc); `parse_kraken_fiat_flows`
-  separately yields `FiatFlow` EUR deposits/withdrawals for the saga. Banks:
+- Exchanges: v8 account adapters are `kraken`, `bisq`, `manual`
+  (`accounts.SUPPORTED_EXCHANGES`). `kraken_csv` / `coinbase_csv` /
+  `binance_csv` / `bisq_csv` yield `exchange.ExchangeTx`; the legacy
+  `import` path still accepts all four. `bisq_csv` reads real
+  `tradeHistory.csv`/`transactions.csv` headers, keeps completed trades only,
+  values `EURBTC` at the stated price and `XMRBTC`/`ETHBTC` at the bundled
+  BTC/EUR close (altcoin leg stays evidence), and tags non-KYC.
+  `manual_exchange.py` parses `events.csv` BUY/SELL/DEPOSIT/WITHDRAWAL rows and
+  validates the semicolon-separated `evidence` files. `bisq_receipts.py`
+  parses Bisq SEPA receipt filenames (date/IBAN/BIC/BTC/price/reference) and
+  matches trade+bank conservatively; PDFs are evidence, never text-mined.
+  `run` renders `reports/exchange/index.html` plus one page per exchange
+  account; unmatched trades/receipts/bank rows are red and never guessed.
+  Report-only runs reuse `imports/bank-rows.csv` (rerun `banks` after changing
+  statements) so the exchange review never silently loses bank corroboration.
+  `parse_kraken_fiat_flows` separately yields `FiatFlow` EUR
+  deposits/withdrawals for the saga. Banks:
   `banks.py` profile engine (headers UNVERIFIED, alias-driven; `BankRow` keeps
   the CSV line number for stable evidence refs); `matching.py` fiat-leg matcher
   (two passes: exact euro equality, then fee/FX tolerance labeled approximate;

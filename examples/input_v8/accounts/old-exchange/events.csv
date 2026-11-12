@@ -1,0 +1,3 @@
+date,kind,btc,eur_per_btc,fee_eur,refid,note,evidence,txid,address,kyc_status
+2017-11-20,BUY,0.25,6000.00,12.50,old-exchange-buy-2017,"Purchase confirmation email; the exchange no longer exports CSV",evidence/2017-11-20_purchase_confirmation.eml,,,kyc
+2018-01-15,WITHDRAWAL,0.25,0,5.00,old-exchange-withdraw-2018,"Withdrawal to Ledger main; email confirmation",evidence/2018-01-15_withdrawal_email.eml,7777777777777777777777777777777777777777777777777777777777777777,bc1qpux3z758ulsxg69eptaakukraanqwtdxe5yy4c,kyc

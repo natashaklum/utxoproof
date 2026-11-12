@@ -82,7 +82,7 @@ def match_fiat_legs(
     """Greedy one-to-one matching, exact pass before approximate. Returns matches + unmatched."""
     matches: list[FiatMatch] = []
     used_bank: set[int] = set()
-    trades = [tx for tx in exchange_txs if tx.kind in ("BUY", "SELL")]
+    trades = [tx for tx in exchange_txs if tx.kind in ("BUY", "SELL") and tx.has_fiat_leg]
     for tx in trades:
         for i, bank in enumerate(bank_rows):
             if i in used_bank:

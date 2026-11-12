@@ -204,6 +204,9 @@ def _build_v8_demo(out: Path) -> list[tuple[str, str]]:
         ("v8 account workflow overview", "v8/overview/overview.html"),
         ("v8 Ledger main account", "v8/entities/ledger-main.html"),
         ("v8 bank review", "v8/bank/bank.html"),
+        ("v8 exchange review", "v8/exchange/index.html"),
+        ("v8 Bisq trades + SEPA receipts", "v8/exchange/bisq.html"),
+        ("v8 manual old-exchange events", "v8/exchange/old-exchange.html"),
         ("v8 tax report 2023", "v8/2023/report.html"),
     ]
 
@@ -237,6 +240,7 @@ def main() -> int:
         ("v8 account workflow overview", "v8/overview/overview.html"),
         ("v8 Ledger main account", "v8/entities/ledger-main.html"),
         ("v8 bank review", "v8/bank/bank.html"),
+        ("v8 exchange review", "v8/exchange/index.html"),
         ("v8 tax report 2023", "v8/2023/report.html"),
         ("Descriptor check (BIP84 vectors)", "descriptors/descriptors.html"),
         ("Bank review (KBC statement)", "bank/bank.html"),

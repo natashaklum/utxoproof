@@ -15,7 +15,9 @@ utxoproof answers three questions:
 
 Browse the [v8 account-workflow demo](https://utxoproof.com/v8/overview/overview.html):
 wallets, bank and exchange balances with allocation charts, drillable down to
-each UTXO and its provenance chain. The demo runs offline against
+each UTXO and its provenance chain. The [exchange review](https://utxoproof.com/v8/exchange/index.html)
+shows Bisq trades, SEPA receipts, a manual old-exchange entry and the bank rows
+that corroborate them. The demo runs offline against
 `examples/input_v8` with deterministic seeded chain activity; all of the
 older fixture reports remain in the [demo index](https://utxoproof.com/).
 
@@ -34,13 +36,16 @@ Implemented and covered by tests + live regtest runs: the v8 account workflow
 (one owner, per-account folders, exported descriptors including multisig,
 BIP329 labels, Electrum primary / Bitcoin Core optional sync, discovery and
 `utxoproof run`), exchange imports (Kraken ledgers + trades join incl.
-margin/rollover, Coinbase, Binance, Bisq) and Belgian bank parsing, EUR price
-oracle, Belgian classifier with `utxoproof.toml`, HTML reports (tax, status,
-privacy, advisory, provenance/saga, all-time) with evidence ZIPs, KYC
-propagation, all-parent provenance with persisted bank↔exchange↔chain links
-and value-weighted coverage, and demo reports published to
-<https://utxoproof.com/> on every `main` push. `utxoproof-plan_v7.md` remains
-the tax/saga spec; the v8 input and account workflow is introduced by the
+margin/rollover, Coinbase, Binance, Bisq, plus manual `events.csv` for dead
+exchanges), Bisq SEPA receipt matching, Belgian bank parsing and fiat-leg
+review with visible unmatched warnings, EUR price oracle, Belgian classifier
+with `utxoproof.toml`, HTML reports (tax, status, privacy, advisory,
+provenance/saga, bank review, exchange review, all-time) with evidence ZIPs,
+KYC propagation, all-parent provenance with persisted
+bank↔exchange↔chain links and value-weighted coverage, and demo reports
+published to <https://utxoproof.com/> on every `main` push.
+`utxoproof-plan_v7.md` remains the tax/saga spec; the v8 input and account
+workflow is introduced by the
 [Getting Started guide](https://utxoproof.com/guide/) and documented in depth
 in the [Slowstart reference](docs/USAGE.md).
 
@@ -105,8 +110,10 @@ input/
 `run` imports labels/exchange/bank files, syncs wallet scripts through the
 configured Electrum server (or Core with `[chain] backend = "core"`), builds the
 tax report + evidence ZIP and the account/provenance dashboard (`--no-zip`
-skips the bundle). `examples/run.sh` is a thin environment-variable wrapper
-around it.
+skips the bundle). Exchange accounts (`kraken`, `bisq`, `manual`) also get
+`reports/exchange/` pages that link trades, SEPA receipts, bank rows and chain
+transactions; unresolved items stay red instead of being guessed.
+`examples/run.sh` is a thin environment-variable wrapper around it.
 
 Offline CSV checks still work without an input tree:
 
@@ -151,11 +158,13 @@ utxoproof/
   runner.py       # discover/run orchestration and report/site generation
   exchange.py + kraken_csv.py (ledgers + trades join, margin/rollover,
     spend/receive, adjustments, earn subtypes; subclass/wallet captured)
-    / coinbase_csv.py / binance_csv.py / bisq_csv.py
+    / coinbase_csv.py / binance_csv.py / bisq_csv.py / manual_exchange.py
+  bisq_receipts.py  # SEPA receipt filename parsing + trade/bank matching
   banks.py + matching.py  # Belgian bank profiles, fiat-leg matcher
   price_oracle.py  # Kraken OHLC + CoinGecko + ECB, SQLite cache
   classifier.py + config.py  # Sec. 6 scores, utxoproof.toml
-  portfolio.py + reports.py  # account dashboard, tax/status/provenance/bank pages
+  portfolio.py + reports.py  # account dashboard, tax/status/provenance/bank/
+                             # exchange review pages
   kyc.py + advisory.py + provenance.py + saga.py + evidence.py
 tests/
   fixtures/  # synthetic only, hand-verified, never real data

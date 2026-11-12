@@ -1,0 +1,115 @@
+{% extends "base.html.j2" %}
+{% block title %}utxoproof exchange review ({{ label }}){% endblock %}
+{% block kicker %}Exchange and receipt review{% endblock %}
+{% block heading %}Exchange review — {{ label }}{% endblock %}
+{% block content %}
+<div class="report-intro">{{ intro }}</div>
+
+{% if review %}
+<div class="alert alert-warn">
+  <h3>{{ review | length }} item{% if review | length != 1 %}s{% endif %} need review</h3>
+  <ul>
+    {% for item in review %}
+    <li><strong>{{ item.item }}</strong> — {{ item.detail }}</li>
+    {% endfor %}
+  </ul>
+  <p>Nothing is guessed: resolve these rows or keep them visible in the filing evidence.</p>
+</div>
+{% else %}
+<div class="alert alert-ok">
+  <h3>Everything on this account is linked</h3>
+  <p>Trades, transfers and receipts all found their counter-legs.</p>
+</div>
+{% endif %}
+
+{% if warnings and not review %}
+<div class="alert alert-warn">
+  <h3>Import warnings</h3>
+  <ul>
+    {% for warning in warnings %}
+    <li>{{ warning }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="metric-grid">
+  <div class="metric">
+    <span class="metric-label">Trades</span>
+    <strong class="metric-value">{{ trades | length }}</strong>
+    <span class="metric-note">{{ fiat_trades }} with a euro leg</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Bank matches</span>
+    <strong class="metric-value">{{ matched_bank }}</strong>
+    <span class="metric-note">of {{ fiat_trades }} fiat-leg trades</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Transfers</span>
+    <strong class="metric-value">{{ transfers | length }}</strong>
+    <span class="metric-note">deposits and withdrawals</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">SEPA receipts</span>
+    <strong class="metric-value">{{ receipts | length }}</strong>
+    <span class="metric-note">{{ matched_receipts }} matched to a trade</span>
+  </div>
+</div>
+
+<h2>Trades</h2>
+{% if trades %}
+<div class="table-wrap"><table>
+  <tr><th>Date</th><th>Kind</th><th>Market</th><th>BTC</th><th>Quote leg</th><th>Price (EUR/BTC)</th><th>Value (EUR)</th><th>Fee (EUR)</th><th>Reference</th><th>Status</th><th>Bank row</th><th>SEPA receipt</th><th>Chain</th></tr>
+  {% for t in trades %}
+  <tr{% if t.has_fiat_leg and t.bank_tier == "unresolved" %} class="row-unmatched"{% endif %}>
+    <td>{{ t.date }}</td>
+    <td>{{ t.kind }}</td>
+    <td>{{ t.market }}</td>
+    <td>{{ t.btc }}</td>
+    <td>{{ t.quote }}</td>
+    <td>{{ t.price }}</td>
+    <td>{{ t.eur }}</td>
+    <td>{{ t.fee }}</td>
+    <td><code>{{ t.refid }}</code></td>
+    <td>{{ t.status }}</td>
+    <td>{% if not t.has_fiat_leg %}n/a{% elif t.bank_tier == "unresolved" %}<span class="missing">no bank row</span>{% else %}<span class="tier tier-{{ t.bank_tier }}">{{ t.bank_tier }}</span> {{ t.bank }}{% endif %}{% if t.bank_reasons %}<br><span class="sub">{{ t.bank_reasons }}</span>{% endif %}</td>
+    <td>{% if t.receipt_href %}<a href="{{ t.receipt_href }}"><code>{{ t.receipt }}</code></a>{% elif t.receipt == "missing" %}<span class="missing">missing</span>{% else %}—{% endif %}</td>
+    <td>{% if t.chain_href %}<a href="{{ t.chain_href }}"><code>{{ t.txid }}</code></a>{% elif t.txid %}<code>{{ t.txid }}</code>{% else %}—{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table></div>
+{% else %}
+<p>No trades parsed for this account.</p>
+{% endif %}
+
+<h2>Transfers</h2>
+{% if transfers %}
+<div class="table-wrap"><table>
+  <tr><th>Date</th><th>Kind</th><th>BTC</th><th>Transaction ID</th><th>Address</th><th>Details</th><th>Evidence</th><th>Source</th></tr>
+  {% for t in transfers %}
+  <tr{% if t.txid == "—" %} class="row-unmatched"{% endif %}><td>{{ t.date }}</td><td>{{ t.kind }}</td><td>{{ t.btc }}</td><td>{% if t.chain_href %}<a href="{{ t.chain_href }}"><code>{{ t.txid }}</code></a>{% elif t.txid != "—" %}<code>{{ t.txid }}</code>{% else %}<span class="missing">missing</span>{% endif %}</td><td><code>{{ t.address }}</code></td><td>{{ t.details }}</td><td>{{ t.evidence }}</td><td><code>{{ t.source }}</code></td></tr>
+  {% endfor %}
+</table></div>
+{% else %}
+<p>No external deposits or withdrawals parsed for this account.</p>
+{% endif %}
+
+<h2>SEPA receipts</h2>
+{% if receipts %}
+<div class="table-wrap"><table>
+  <tr><th>Date</th><th>Receipt</th><th>BTC</th><th>Price (EUR/BTC)</th><th>EUR</th><th>Counterparty</th><th>Reference</th><th>Trade</th><th>Bank row</th><th>Match</th><th>SHA-256</th></tr>
+  {% for r in receipts %}
+  <tr{% if r.tier in ("unmatched", "ambiguous") %} class="row-unmatched"{% endif %}><td>{{ r.date }}</td><td><a href="{{ r.href }}"><code>{{ r.filename }}</code></a></td><td>{{ r.btc }}</td><td>{{ r.price }}</td><td>{{ r.eur }}</td><td><code>{{ r.counterparty }}</code></td><td>{{ r.reference }}</td><td>{{ r.trade }}</td><td>{{ r.bank }}</td><td><span class="tier tier-{{ r.tier }}">{{ r.tier }}</span><br><span class="sub">{{ r.reasons }}</span></td><td><code>{{ r.sha256 }}</code></td></tr>
+  {% endfor %}
+</table></div>
+{% else %}
+<p>No SEPA receipt PDFs found under the account's receipts folder.</p>
+{% endif %}
+
+<h2>Related evidence</h2>
+<ul>
+  <li><a href="{{ bank_href }}">Bank review</a> — statement rows, fiat-leg matches and unmatched rows.</li>
+  {% if tax_href %}<li><a href="{{ tax_href }}">Tax report</a> — these trades valued at moving-average cost.</li>{% endif %}
+  <li><a href="index.html">All exchange accounts</a></li>
+</ul>
+{% endblock %}

@@ -11,7 +11,7 @@ import csv
 import datetime
 import os
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -27,9 +27,11 @@ from utxoproof.accounts import (
     portfolio_config,
     registry_summary,
 )
-from utxoproof.banks import BankRow, parse_bank_csv
+from utxoproof.banks import BankRow, load_bank_rows_csv, parse_bank_csv
+from utxoproof.bisq_receipts import BisqReceipt
 from utxoproof.config import Config
 from utxoproof.db import init_db
+from utxoproof.exchange import ExchangeTx
 from utxoproof.labels import address_labels, import_bip329, output_labels, parse_bip329
 from utxoproof.saga import load_saga_sources
 
@@ -54,6 +56,21 @@ class RunOptions:
     # to link the generated site back to its landing page and guide; normal
     # runs leave this empty.
     nav_extra: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass
+class ExchangeImport:
+    """Parsed exchange sources for the current run (all adapters)."""
+
+    transactions: list[ExchangeTx] = field(default_factory=list)
+    receipts: list[BisqReceipt] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    manual: Path | None = None
+    merged_ledgers: Path | None = None
+    merged_trades: Path | None = None
+
+    def account_transactions(self, account_id: str) -> list[ExchangeTx]:
+        return [tx for tx in self.transactions if tx.account_id == account_id]
 
 
 def _account_json(account: Account) -> dict[str, Any]:
@@ -88,6 +105,9 @@ def _account_json(account: Account) -> dict[str, Any]:
                 "exchange": account.exchange,
                 "ledgers": [str(path) for path in account.ledgers],
                 "trades": [str(path) for path in account.trades],
+                "transactions": [str(path) for path in account.transactions],
+                "receipts": [str(path) for path in account.receipts],
+                "events": [str(path) for path in account.events],
             }
         )
     else:
@@ -114,13 +134,18 @@ def discover(input_dir: str | Path, online: bool = False) -> dict[str, Any]:
             "accounts": [],
             "warnings": [],
             "errors": [str(exc)],
-            "checks": {"labels": 0, "bank_rows": 0, "exchange_txs": 0},
+            "checks": {"labels": 0, "bank_rows": 0, "exchange_txs": 0, "receipts": 0},
             "online": None,
             "ok": False,
         }
     errors = list(registry.errors)
     warnings = list(registry.warnings)
-    checks: dict[str, Any] = {"labels": 0, "bank_rows": 0, "exchange_txs": 0}
+    checks: dict[str, Any] = {
+        "labels": 0,
+        "bank_rows": 0,
+        "exchange_txs": 0,
+        "receipts": 0,
+    }
     for account in registry.accounts:
         if account.kind == "wallet" and account.labels_file:
             try:
@@ -136,15 +161,50 @@ def discover(input_dir: str | Path, online: bool = False) -> dict[str, Any]:
                 except (ValueError, OSError, csv.Error) as exc:
                     errors.append(f"{statement}: bank profile {account.profile}: {exc}")
         elif account.kind == "exchange":
-            from utxoproof.kraken_csv import parse_kraken_ledgers
+            try:
+                if account.exchange == "kraken":
+                    from utxoproof.kraken_csv import parse_kraken_ledgers
 
-            for ledger in account.ledgers:
-                try:
-                    checks["exchange_txs"] += len(
-                        parse_kraken_ledgers(ledger, account.trades[0] if account.trades else None)
+                    for ledger in account.ledgers:
+                        checks["exchange_txs"] += len(
+                            parse_kraken_ledgers(
+                                ledger, account.trades[0] if account.trades else None
+                            )
+                        )
+                elif account.exchange == "bisq":
+                    from utxoproof.bisq_csv import (
+                        parse_bisq_trade_history,
+                        parse_bisq_transactions,
                     )
-                except (ValueError, OSError, csv.Error) as exc:
-                    errors.append(f"{ledger}: exchange parse: {exc}")
+                    from utxoproof.bisq_receipts import parse_bisq_receipt
+                    from utxoproof.cli import load_price_history
+
+                    price_at = load_price_history(None)
+                    for trade_file in account.trades:
+                        txs, trade_warnings = parse_bisq_trade_history(
+                            trade_file,
+                            btc_eur=price_at,
+                            crypto_direction=account.crypto_direction,
+                        )
+                        checks["exchange_txs"] += len(txs)
+                        warnings.extend(trade_warnings)
+                    for transfer_file in account.transactions:
+                        txs, transfer_warnings = parse_bisq_transactions(transfer_file)
+                        checks["exchange_txs"] += len(txs)
+                        warnings.extend(transfer_warnings)
+                    for receipt_file in account.receipts:
+                        try:
+                            parse_bisq_receipt(receipt_file)
+                            checks["receipts"] += 1
+                        except ValueError as exc:
+                            warnings.append(str(exc))
+                else:
+                    from utxoproof.manual_exchange import parse_manual_events
+
+                    for event_file in account.events:
+                        checks["exchange_txs"] += len(parse_manual_events(event_file, account.path))
+            except (ValueError, OSError, csv.Error) as exc:
+                errors.append(f"{account.id}: exchange parse: {exc}")
     online_result: dict[str, Any] | None = None
     if online and registry.ok:
         try:
@@ -180,7 +240,7 @@ def discover_text(input_dir: str | Path, online: bool = False) -> list[str]:
     checks = result["checks"]
     lines.append(
         f"parsed: {checks['labels']} labels, {checks['bank_rows']} bank rows, "
-        f"{checks['exchange_txs']} exchange txs"
+        f"{checks['exchange_txs']} exchange txs, {checks.get('receipts', 0)} receipts"
     )
     if result["online"] is not None:
         lines.append(f"backend: {result['online']}")
@@ -323,29 +383,199 @@ def _merge_csv(files: list[Path], out: Path, unique_column: str | None = None) -
     return out
 
 
-def _write_manual(
-    registry: Registry, out_dir: Path
-) -> tuple[Path | None, Path | None, Path | None]:
-    """Merge exchange exports and write one manual CSV for compute/report."""
+def _write_exchange_csvs(result: ExchangeImport, out_dir: Path) -> list[Path]:
+    """Write the deterministic per-exchange review tables used as evidence."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    files: list[Path] = []
+
+    trades = out_dir / "exchange-trades.csv"
+    with open(trades, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "account_id",
+                "date",
+                "kind",
+                "market",
+                "btc",
+                "quote_currency",
+                "quote_amount",
+                "eur_per_btc",
+                "fee_eur",
+                "refid",
+                "status",
+                "has_fiat_leg",
+                "source",
+                "details",
+            ],
+        )
+        writer.writeheader()
+        for tx in result.transactions:
+            if tx.kind not in ("BUY", "SELL"):
+                continue
+            writer.writerow(
+                {
+                    "account_id": tx.account_id,
+                    "date": tx.date.isoformat(),
+                    "kind": tx.kind,
+                    "market": tx.market,
+                    "btc": str(tx.btc),
+                    "quote_currency": tx.quote_currency,
+                    "quote_amount": str(tx.quote_amount),
+                    "eur_per_btc": str(tx.eur_per_btc),
+                    "fee_eur": str(tx.fee_eur),
+                    "refid": tx.refid,
+                    "status": tx.status,
+                    "has_fiat_leg": "1" if tx.has_fiat_leg else "0",
+                    "source": tx.source_evidence,
+                    "details": tx.details,
+                }
+            )
+    files.append(trades)
+
+    transfers = out_dir / "exchange-transfers.csv"
+    with open(transfers, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "account_id",
+                "date",
+                "kind",
+                "btc",
+                "txid",
+                "address",
+                "refid",
+                "details",
+                "source",
+                "evidence",
+            ],
+        )
+        writer.writeheader()
+        for tx in result.transactions:
+            if tx.kind not in ("DEPOSIT", "WITHDRAWAL"):
+                continue
+            writer.writerow(
+                {
+                    "account_id": tx.account_id,
+                    "date": tx.date.isoformat(),
+                    "kind": tx.kind,
+                    "btc": str(tx.btc),
+                    "txid": tx.txid,
+                    "address": tx.address,
+                    "refid": tx.refid,
+                    "details": tx.details,
+                    "source": tx.source_evidence,
+                    "evidence": ";".join(tx.evidence),
+                }
+            )
+    files.append(transfers)
+
+    receipts = out_dir / "exchange-receipts.csv"
+    with open(receipts, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "account_id",
+                "filename",
+                "date",
+                "counterparty_iban",
+                "bic",
+                "name",
+                "currency",
+                "btc",
+                "price_eur",
+                "market",
+                "reference",
+                "own_iban",
+                "sha256",
+            ],
+        )
+        writer.writeheader()
+        for receipt in result.receipts:
+            writer.writerow(
+                {
+                    "account_id": receipt.account_id,
+                    "filename": receipt.filename,
+                    "date": receipt.date.isoformat(),
+                    "counterparty_iban": receipt.iban,
+                    "bic": receipt.bic,
+                    "name": receipt.name,
+                    "currency": receipt.currency,
+                    "btc": str(receipt.btc),
+                    "price_eur": str(receipt.price_eur),
+                    "market": receipt.market,
+                    "reference": receipt.reference,
+                    "own_iban": receipt.own_iban,
+                    "sha256": receipt.sha256,
+                }
+            )
+    files.append(receipts)
+    return files
+
+
+def _write_manual(registry: Registry, out_dir: Path, price_at: Any) -> ExchangeImport:
+    """Parse every exchange adapter and write one manual CSV for compute/report."""
+    from utxoproof.bisq_csv import parse_bisq_trade_history, parse_bisq_transactions
+    from utxoproof.bisq_receipts import parse_bisq_receipt
+    from utxoproof.evidence import sha256_file
     from utxoproof.exchange import to_manual_csv_rows
     from utxoproof.kraken_csv import parse_kraken_ledgers
+    from utxoproof.manual_exchange import parse_manual_events
 
     exchanges = registry.by_kind("exchange")
+    result = ExchangeImport()
     if not exchanges:
-        return None, None, None
-    ledgers = [path for account in exchanges for path in account.ledgers]
-    trades = [path for account in exchanges for path in account.trades]
-    merged_ledgers = _merge_csv(ledgers, out_dir / "ledgers.csv", unique_column="refid")
-    merged_trades = _merge_csv(trades, out_dir / "trades.csv")
-    transactions = []
+        return result
+    ledgers = [
+        path for account in exchanges if account.exchange == "kraken" for path in account.ledgers
+    ]
+    trades = [
+        path for account in exchanges if account.exchange == "kraken" for path in account.trades
+    ]
+    result.merged_ledgers = _merge_csv(ledgers, out_dir / "ledgers.csv", unique_column="refid")
+    result.merged_trades = _merge_csv(trades, out_dir / "trades.csv")
     for account in exchanges:
-        for ledger in account.ledgers:
-            account_txs = parse_kraken_ledgers(ledger, merged_trades)
-            for tx in account_txs:
-                tx.account_id = account.id
-            transactions.extend(account_txs)
-    transactions.sort(key=lambda tx: (tx.date.isoformat(), tx.refid))
-    rows = to_manual_csv_rows(transactions, include_account=True)
+        if account.exchange == "kraken":
+            for ledger in account.ledgers:
+                account_txs = parse_kraken_ledgers(ledger, result.merged_trades)
+                for tx in account_txs:
+                    tx.account_id = account.id
+                result.transactions.extend(account_txs)
+        elif account.exchange == "bisq":
+            for trade_file in account.trades:
+                account_txs, trade_warnings = parse_bisq_trade_history(
+                    trade_file,
+                    btc_eur=price_at,
+                    crypto_direction=account.crypto_direction,
+                )
+                for tx in account_txs:
+                    tx.account_id = account.id
+                result.transactions.extend(account_txs)
+                result.warnings.extend(trade_warnings)
+            for transfer_file in account.transactions:
+                account_txs, transfer_warnings = parse_bisq_transactions(transfer_file)
+                for tx in account_txs:
+                    tx.account_id = account.id
+                result.transactions.extend(account_txs)
+                result.warnings.extend(transfer_warnings)
+            for receipt_file in account.receipts:
+                try:
+                    receipt = parse_bisq_receipt(receipt_file)
+                except ValueError as exc:
+                    result.warnings.append(str(exc))
+                    continue
+                receipt.account_id = account.id
+                receipt.sha256 = sha256_file(receipt_file)
+                result.receipts.append(receipt)
+        else:
+            for event_file in account.events:
+                account_txs = parse_manual_events(event_file, account.path)
+                for tx in account_txs:
+                    tx.account_id = account.id
+                result.transactions.extend(account_txs)
+    result.transactions.sort(key=lambda tx: (tx.date.isoformat(), tx.refid, tx.account_id))
+    result.receipts.sort(key=lambda receipt: (receipt.date.isoformat(), receipt.filename))
+    rows = to_manual_csv_rows(result.transactions, include_account=True)
     manual = out_dir / "manual.csv"
     fields = [
         "date",
@@ -357,11 +587,14 @@ def _write_manual(
         "fee_eur",
         "account_id",
     ]
+    out_dir.mkdir(parents=True, exist_ok=True)
     with open(manual, "w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
         writer.writerows(rows)
-    return merged_ledgers, merged_trades, manual
+    result.manual = manual
+    _write_exchange_csvs(result, out_dir)
+    return result
 
 
 def _write_bank_rows(
@@ -384,6 +617,8 @@ def _write_bank_rows(
         "fee_eur",
         "description",
         "amount_eur",
+        "counterparty_iban",
+        "reference",
         "account_id",
         "source_file",
         "row_number",
@@ -397,12 +632,97 @@ def _write_bank_rows(
                     "date": row.date.isoformat(),
                     "description": row.description,
                     "amount_eur": str(row.amount_eur),
+                    "counterparty_iban": row.counterparty_iban or "",
+                    "reference": row.reference or "",
                     "account_id": row.account_id,
                     "source_file": row.source_file,
                     "row_number": row.row_number,
                 }
             )
     return target, rows, specs
+
+
+def _write_exchange_links(
+    result: ExchangeImport,
+    bank_matches: list[Any],
+    receipt_matches: list[Any],
+    out_dir: Path,
+) -> Path:
+    """Write one row per trade linking trade, bank row, receipt and transfer."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    target = out_dir / "exchange-links.csv"
+    bank_by_tx = {id(match.tx): match for match in bank_matches}
+    receipt_by_trade = {
+        id(match.trade): match for match in receipt_matches if match.trade is not None
+    }
+    transfers = [tx for tx in result.transactions if tx.kind in ("DEPOSIT", "WITHDRAWAL")]
+    fields = [
+        "account_id",
+        "trade_ref",
+        "trade_date",
+        "trade_kind",
+        "market",
+        "btc",
+        "eur_value",
+        "quote_currency",
+        "quote_amount",
+        "has_fiat_leg",
+        "status",
+        "bank_date",
+        "bank_amount_eur",
+        "bank_account",
+        "bank_source",
+        "bank_tier",
+        "bank_reasons",
+        "receipt_file",
+        "receipt_tier",
+        "receipt_reasons",
+        "transfer_date",
+        "transfer_kind",
+        "transfer_btc",
+        "txid",
+        "address",
+    ]
+    with open(target, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        for trade in result.transactions:
+            if trade.kind not in ("BUY", "SELL"):
+                continue
+            bank = bank_by_tx.get(id(trade))
+            receipt = receipt_by_trade.get(id(trade))
+            refs = set(trade.trade_refs)
+            transfer = next((tx for tx in transfers if refs & set(tx.trade_refs)), None)
+            writer.writerow(
+                {
+                    "account_id": trade.account_id,
+                    "trade_ref": trade.refid,
+                    "trade_date": trade.date.isoformat(),
+                    "trade_kind": trade.kind,
+                    "market": trade.market,
+                    "btc": str(trade.btc),
+                    "eur_value": str(trade.fiat_amount),
+                    "quote_currency": trade.quote_currency,
+                    "quote_amount": str(trade.quote_amount),
+                    "has_fiat_leg": "1" if trade.has_fiat_leg else "0",
+                    "status": trade.status,
+                    "bank_date": bank.bank.date.isoformat() if bank else "",
+                    "bank_amount_eur": str(bank.bank.amount_eur) if bank else "",
+                    "bank_account": bank.bank.account_id if bank else "",
+                    "bank_source": bank.bank.source_file if bank else "",
+                    "bank_tier": bank.tier if bank else "",
+                    "bank_reasons": "; ".join(bank.reasons) if bank else "",
+                    "receipt_file": receipt.receipt.filename if receipt else "",
+                    "receipt_tier": receipt.tier if receipt else "",
+                    "receipt_reasons": ("; ".join(receipt.reasons or []) if receipt else ""),
+                    "transfer_date": transfer.date.isoformat() if transfer else "",
+                    "transfer_kind": transfer.kind if transfer else "",
+                    "transfer_btc": str(transfer.btc) if transfer else "",
+                    "txid": transfer.txid if transfer else "",
+                    "address": transfer.address if transfer else "",
+                }
+            )
+    return target
 
 
 def _import_labels(registry: Registry, db: sqlite3.Connection) -> list[str]:
@@ -540,6 +860,10 @@ def _write_evidence(
         merged_ledgers,
         merged_trades,
         imports / "bank-rows.csv",
+        imports / "exchange-trades.csv",
+        imports / "exchange-transfers.csv",
+        imports / "exchange-receipts.csv",
+        imports / "exchange-links.csv",
     ]
     intermediate = sorted(
         {path for path in candidates if path is not None and Path(path).is_file()}
@@ -599,7 +923,9 @@ def _build_reports(
     merged_trades: Path | None,
     bank_specs: list[tuple[str | Path, str]],
     bank_rows: list[BankRow],
+    exchange_import: ExchangeImport,
 ) -> list[str]:
+    from utxoproof.bisq_receipts import match_receipts
     from utxoproof.cli import load_price_history
     from utxoproof.matching import match_fiat_legs
     from utxoproof.portfolio import (
@@ -610,21 +936,23 @@ def _build_reports(
     from utxoproof.price_oracle import bundled_history_path
     from utxoproof.reports import (
         account_site_pages,
+        entity_review_links,
         report_years,
         site_nav,
         write_bank_page,
         write_entity_pages,
+        write_exchange_pages,
         write_full_report,
         write_overview_page,
         write_provenance_page,
         write_report,
     )
-    from utxoproof.saga import build_saga_document
+    from utxoproof.saga import SagaSources, build_saga_document
 
     lines: list[str] = []
     as_of = _as_of(options, registry)
     price_at = load_price_history(None)
-    if price_at is None:  # pragma: no cover - bundled history is always shipped
+    if price_at is None:  # pragma: no cover - bundled price history is always shipped
         raise RuntimeError("bundled BTC/EUR price history is missing")
     latest = _latest_bundled_date()
     if latest is not None and as_of > latest:
@@ -642,13 +970,40 @@ def _build_reports(
     sources = load_saga_sources(
         merged_ledgers,
         merged_trades,
-        bank_specs or None,
+        None if bank_rows else (bank_specs or None),
     )
+    if sources is None and (exchange_import.transactions or bank_rows):
+        sources = SagaSources()
+    if sources is not None:
+        # Parsed once by the exchange adapters: keep the same objects so the
+        # bank/receipt matchers and the saga agree on refids and metadata.
+        if exchange_import.transactions:
+            sources.transactions = exchange_import.transactions
+        if bank_rows:
+            sources.bank_rows = bank_rows
+    bank_matches, bank_unmatched = (
+        match_fiat_legs(exchange_import.transactions, bank_rows) if bank_rows else ([], [])
+    )
+    receipt_matches, receipt_warnings = (
+        match_receipts(exchange_import.receipts, exchange_import.transactions, bank_matches)
+        if exchange_import.receipts
+        else ([], [])
+    )
+    if exchange_import.transactions:
+        links_csv = _write_exchange_links(
+            exchange_import,
+            bank_matches,
+            receipt_matches,
+            reports_dir.parent / "imports",
+        )
+        lines.append(f"wrote {links_csv}")
+    lines.extend(f"WARNING: {warning}" for warning in receipt_warnings)
     report_year = _report_year(options, registry, manual)
     tax_years = sorted(set(report_years(reports_dir)))
     if report_year is not None:
         tax_years = sorted(set(tax_years) | {report_year})
     bank_expected = bool(bank_rows) or (reports_dir / "bank" / "bank.html").is_file()
+    exchange_expected = bool(exchange_import.transactions or exchange_import.receipts)
     full_year = (
         report_year
         if report_year is not None
@@ -658,12 +1013,73 @@ def _build_reports(
         )
         else None
     )
-    base_nav_pages = account_site_pages(tax_years, bank=bank_expected, full_report_year=full_year)
+    base_nav_pages = account_site_pages(
+        tax_years,
+        bank=bank_expected,
+        exchange=exchange_expected,
+        full_report_year=full_year,
+    )
     nav_pages = [*options.nav_extra, *base_nav_pages]
 
     def nav_for(target: Path) -> list[dict[str, object]]:
         return site_nav(nav_pages, reports_dir, target)
 
+    exchange_alerts: list[dict[str, str]] = []
+    if exchange_expected:
+        exchange_dir = reports_dir / "exchange"
+        tax_href = (
+            os.path.relpath(reports_dir / str(report_year) / "report.html", exchange_dir)
+            if report_year is not None
+            else ""
+        )
+        for target in write_exchange_pages(
+            [
+                {
+                    "id": account.id,
+                    "label": account.label,
+                    "exchange": account.exchange,
+                    "path": str(account.path),
+                }
+                for account in registry.by_kind("exchange")
+            ],
+            exchange_import.transactions,
+            exchange_import.receipts,
+            bank_matches,
+            receipt_matches,
+            exchange_dir,
+            demo_notice=options.demo_notice,
+            provenance_dir=reports_dir / "provenance",
+            bank_href=os.path.relpath(reports_dir / "bank" / "bank.html", exchange_dir),
+            tax_href=tax_href,
+            warnings=[*exchange_import.warnings, *receipt_warnings],
+            nav=nav_for(exchange_dir / "index.html"),
+        ):
+            lines.append(f"wrote {target}")
+        fiat_trades = [
+            tx
+            for tx in exchange_import.transactions
+            if tx.kind in ("BUY", "SELL") and tx.has_fiat_leg
+        ]
+        matched_refs = {match.tx.refid for match in bank_matches}
+        unmatched_trades = [tx for tx in fiat_trades if tx.refid not in matched_refs]
+        unmatched_receipts = [
+            match for match in receipt_matches if match.tier in ("unmatched", "ambiguous")
+        ]
+        if unmatched_trades or unmatched_receipts or exchange_import.warnings:
+            parts = []
+            if unmatched_trades:
+                parts.append(f"{len(unmatched_trades)} trade(s) without a bank row")
+            if unmatched_receipts:
+                parts.append(f"{len(unmatched_receipts)} receipt(s) without a trade")
+            if exchange_import.warnings:
+                parts.append(f"{len(exchange_import.warnings)} import warning(s)")
+            exchange_alerts.append(
+                {
+                    "text": "Exchange review: " + ", ".join(parts) + ".",
+                    "href": os.path.relpath(exchange_dir / "index.html", reports_dir / "overview"),
+                    "link": "Open exchange review",
+                }
+            )
     if _selected(options, "report") and manual is not None and report_year is not None:
         year_out = reports_dir / str(report_year)
         target = write_report(
@@ -722,6 +1138,17 @@ def _build_reports(
             overview_target,
         )
     ]
+    overview_alerts = list(exchange_alerts)
+    if bank_unmatched:
+        overview_alerts.append(
+            {
+                "text": (
+                    f"Bank review: {len(bank_unmatched)} statement row(s) without a matching trade."
+                ),
+                "href": os.path.relpath(reports_dir / "bank" / "bank.html", overview_target.parent),
+                "link": "Open bank review",
+            }
+        )
     overview = write_overview_page(
         portfolio,
         as_of.isoformat(),
@@ -731,6 +1158,7 @@ def _build_reports(
         demo_notice=options.demo_notice,
         reports=overview_links,
         nav=nav_for(overview_target),
+        alerts=overview_alerts,
     )
     lines.append(f"wrote {overview}")
     flags_by_utxo = {
@@ -738,21 +1166,8 @@ def _build_reports(
         for item in advisories
     }
     review_year = report_year if report_year is not None else (tax_years[-1] if tax_years else None)
-    review_links: dict[str, dict[str, str]] = {}
     entities_dir = reports_dir / "entities"
-    for account in portfolio.entities:
-        if account.kind in ("bank", "credit_card") and bank_expected:
-            review_links[account.id] = {
-                "title": "Bank review",
-                "href": os.path.relpath(reports_dir / "bank" / "bank.html", entities_dir),
-            }
-        elif account.kind == "exchange" and review_year is not None:
-            review_links[account.id] = {
-                "title": f"Tax report {review_year}",
-                "href": os.path.relpath(
-                    reports_dir / str(review_year) / "report.html", entities_dir
-                ),
-            }
+    review_links = entity_review_links(portfolio, reports_dir, entities_dir, review_year)
     for target in write_entity_pages(
         portfolio,
         "../provenance",
@@ -778,18 +1193,26 @@ def _build_reports(
             saga_document=documents[(utxo.txid, utxo.vout)],
         )
         lines.append(f"wrote {target}")
-    if bank_rows:
-        bank_txs = sources.transactions if sources is not None else []
-        matches, unmatched = match_fiat_legs(bank_txs, bank_rows)
+    if bank_rows and bank_specs:
         target = write_bank_page(
             "+".join(sorted({profile for _path, profile in bank_specs})),
             bank_rows,
-            matches,
-            unmatched,
+            bank_matches,
+            bank_unmatched,
             reports_dir / "bank",
             demo_notice=options.demo_notice,
             provenance_dir=reports_dir / "provenance",
             nav=nav_for(reports_dir / "bank" / "bank.html"),
+            receipt_matches=receipt_matches,
+            warnings=[*exchange_import.warnings, *receipt_warnings],
+            exchange_href=(
+                os.path.relpath(
+                    reports_dir / "exchange" / "index.html",
+                    reports_dir / "bank",
+                )
+                if exchange_expected
+                else ""
+            ),
         )
         lines.append(f"wrote {target}")
     if _selected(options, "report") and manual is not None and report_year is not None:
@@ -876,29 +1299,25 @@ def run(options: RunOptions) -> int:
     if _selected(options, "sync") and not options.offline:
         for line in _sync_chain(registry, db, options):
             print(line)
-    merged_ledgers = merged_trades = manual = None
+    from utxoproof.cli import load_price_history
+
+    exchange_import = ExchangeImport()
     exchange_lines: list[str] = []
-    if _selected(options, "exchanges"):
+    if registry.by_kind("exchange"):
         try:
-            merged_ledgers, merged_trades, manual = _write_manual(registry, imports)
-            if manual is not None:
-                exchange_lines.append(f"wrote {manual}")
-        except (OSError, ValueError, csv.Error) as exc:
+            price_at = load_price_history(None)
+            if price_at is None:  # pragma: no cover - bundled history is shipped
+                raise RuntimeError("bundled BTC/EUR price history is missing")
+            exchange_import = _write_manual(registry, imports, price_at)
+            exchange_lines.extend(f"WARNING: {w}" for w in exchange_import.warnings)
+            if _selected(options, "exchanges") and exchange_import.manual is not None:
+                exchange_lines.append(f"wrote {exchange_import.manual}")
+        except (OSError, ValueError, csv.Error, RuntimeError) as exc:
             print(f"exchange import failed: {exc}")
             return 2
-    else:
-        for key, path in (
-            ("ledgers", imports / "ledgers.csv"),
-            ("trades", imports / "trades.csv"),
-            ("manual", imports / "manual.csv"),
-        ):
-            if path.is_file():
-                if key == "ledgers":
-                    merged_ledgers = path
-                elif key == "trades":
-                    merged_trades = path
-                else:
-                    manual = path
+    merged_ledgers = exchange_import.merged_ledgers
+    merged_trades = exchange_import.merged_trades
+    manual = exchange_import.manual
     bank_rows: list[BankRow] = []
     bank_specs: list[tuple[str | Path, str]] = []
     if _selected(options, "banks"):
@@ -910,6 +1329,21 @@ def run(options: RunOptions) -> int:
         except (OSError, ValueError, csv.Error) as exc:
             print(f"bank import failed: {exc}")
             return 2
+    else:
+        persisted = imports / "bank-rows.csv"
+        if persisted.is_file():
+            try:
+                bank_rows = load_bank_rows_csv(persisted)
+            except (OSError, ValueError, csv.Error) as exc:
+                print(f"bank reuse failed: {exc}")
+                return 2
+            bank_specs = [
+                (statement, account.profile)
+                for account in [*registry.by_kind("bank"), *registry.by_kind("credit_card")]
+                for statement in account.statements
+            ]
+            if bank_rows:
+                print(f"bank rows: {len(bank_rows)} (reused {persisted})")
     for line in exchange_lines:
         print(line)
     for line in _build_reports(
@@ -922,6 +1356,7 @@ def run(options: RunOptions) -> int:
         merged_trades,
         bank_specs,
         bank_rows,
+        exchange_import,
     ):
         print(line)
     db.close()

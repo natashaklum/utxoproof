@@ -48,6 +48,19 @@ class ExchangeTx:
     subclass: str = ""
     trade_refs: tuple[str, ...] = ()
     account_id: str = ""  # plan-v8 account folder attribution
+    # Market metadata (Bisq and future exchange adapters). The BTC leg always
+    # drives the pool; ``quote_currency``/``quote_amount`` keep the other leg
+    # as evidence. ``has_fiat_leg`` excludes crypto-crypto trades from bank
+    # statement matching.
+    market: str = ""
+    quote_currency: str = "EUR"
+    quote_amount: Decimal = Decimal("0")
+    has_fiat_leg: bool = True
+    status: str = ""
+    txid: str = ""
+    address: str = ""
+    details: str = ""
+    evidence: tuple[str, ...] = ()
 
     @property
     def fiat_amount(self) -> Decimal:

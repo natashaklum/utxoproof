@@ -190,6 +190,21 @@ exchange = "kraken"
 ledgers = ["ledgers.csv"]
 trades = ["trades.csv"]
 
+# accounts/bisq/account.toml
+kind = "exchange"
+label = "Bisq"
+exchange = "bisq"
+trade_history = "tradeHistory.csv"   # or: trades = "tradeHistory.csv"
+transactions = "transactions.csv"
+receipts = "receipts/*.pdf"          # auto-detected below receipts/ if omitted
+# crypto_direction = "btc"           # only if bare Buy/Sell means the BTC side
+
+# accounts/old-exchange/account.toml
+kind = "exchange"
+label = "Old exchange (manual)"
+exchange = "manual"
+events = "events.csv"
+
 # accounts/degiro/account.toml
 kind = "broker"
 label = "DEGIRO"
@@ -201,6 +216,21 @@ value_eur = "2125.00"
 as_of = "2023-12-31"
 note = "Informational only"
 ```
+
+Bisq's `tradeHistory.csv` and `transactions.csv` are parsed with their real
+export headers. EUR trades use the stated EUR/BTC price; XMR/BTC and ETH/BTC
+trades are valued at the bundled BTC/EUR daily close, with the altcoin leg kept
+as evidence. Only completed trades enter the pool. SEPA receipt PDFs under the
+account's `receipts/` folder are parsed from their deterministic filename
+(date, counterparties, BTC amount, EUR/BTC price, market, reference) and matched
+to the trade and bank row; the PDF itself is evidence and is not text-mined.
+
+A manual exchange uses `events.csv` with `date,kind` (`BUY`, `SELL`, `DEPOSIT`,
+`WITHDRAWAL`) and optional `btc,eur_per_btc,fee_eur,refid,note,evidence,txid,
+address,kyc_status`. `evidence` is a semicolon-separated list of files relative
+to the account folder; every listed file must exist. The account folder is
+already included in the evidence ZIP, so the email or PDF is linked from the
+exchange review page and travels with the filing bundle.
 
 Generated files never go back into `input/`; the DB, imports and HTML live
 under `--data-dir`. Discover the tree offline before trusting it:
@@ -224,14 +254,20 @@ utxoproof run --input ~/utxoproof-data/input --data-dir ~/utxoproof-data \
 ```
 
 `run` writes `imports/` (merged exchange ledgers/trades, `manual.csv`, bank
-rows), the SQLite DB, `reports/<year>/report.html` plus the evidence ZIP (the
-account source files, intermediates, attachments and the report; the root
-`utxoproof.toml` is excluded because it may contain RPC credentials), the full
-report, the account overview and account pages, provenance pages, and the bank
-review page.
+rows, `exchange-trades.csv`, `exchange-transfers.csv`, `exchange-receipts.csv`
+and `exchange-links.csv`), the SQLite DB, `reports/<year>/report.html` plus the
+evidence ZIP (the account source files, intermediates, attachments and the
+report; the root `utxoproof.toml` is excluded because it may contain RPC
+credentials), the full report, the account overview and account pages,
+provenance pages, the bank review page and the exchange review pages. Unmatched
+exchange trades, receipts and bank rows are highlighted in red on those pages
+and surfaced as an overview alert; the same links are written to
+`imports/exchange-links.csv`.
 Use `--only labels,sync,exchanges,banks,report,portfolio` for a partial rerun;
 `--force-rescan` for wallets funded before the first sync; `--no-zip` skips
-the evidence bundle. Verify on-chain
+the evidence bundle. A report-only rerun reuses `imports/bank-rows.csv` so
+exchange links keep their bank corroboration; rerun `banks` after changing
+statements. Verify on-chain
 balances against the selected backend with:
 
 ```bash
@@ -573,6 +609,59 @@ trades (lone legs stay visible as cashflow, gains never invented);
 `adjustment` (delisting conversions) prices off its fiat leg; `earn` rewards
 and `invite bonus` book as income while allocation-style subtypes
 (`spottostaking`, `migration`, …) are internal moves, not income.
+
+### Bisq: trade history, transfers and SEPA receipts
+
+Bisq exports two files: `tradeHistory.csv` (completed trades) and
+`transactions.csv` (external sends/receives). Put both in the account folder
+with `exchange = "bisq"`; the runner parses only completed trades, joins the
+BTC leg to the pool and keeps every transfer's `Transaction ID`/address for
+the exchange review page and provenance links. Internal wallet shuffles and
+trade deposits are ignored. The parser is loud about unknown directions and
+unparseable amounts.
+
+`tradeHistory.csv` uses Bisq's `Offer type` labels. Fiat markets say
+`Buy BTC`/`Sell BTC`; crypto markets say `Buy XMR`/`Sell XMR` (buying the
+altcoin means selling BTC). If an older export uses a bare `Buy`/`Sell` on a
+crypto market, set `crypto_direction = "btc"` in the manifest when the label
+means the BTC side. XMR/BTC and ETH/BTC trades are valued at the bundled
+BTC/EUR close, so the altcoin leg never enters the Bitcoin cost pool.
+
+SEPA receipts are PDFs named by Bisq with the transfer metadata, e.g.
+`20260226_ES…_BSCHES…_FIRSTNAME_LASTNAME_1234_EUR_0.01234_BTC_123456.78_EURBTC_export_BE….pdf`.
+The receipt parser reads the date, EUR/BTC price, BTC amount, market,
+counterparty IBAN/BIC and reference from the filename, then matches it to an
+EUR trade (date ±4 days, BTC and price within rounding tolerance) and to the
+bank row that trade already matched. PDF contents are not parsed; the file is
+copied next to the exchange report and into the evidence ZIP. An unmatched or
+ambiguous receipt stays red for manual review instead of being guessed.
+
+### Old exchange without a CSV: manual events
+
+Use `exchange = "manual"` and an `events.csv`. The evidence column points at
+the confirmation email or PDF relative to the account folder; every listed file
+must exist. A buy and a withdrawal from the same old exchange look like this:
+
+```csv
+date,kind,btc,eur_per_btc,fee_eur,refid,note,evidence,txid,address,kyc_status
+2017-11-20,BUY,0.25,6000.00,12.50,old-buy-1,"Purchase confirmation",evidence/2017-11-20_purchase.eml,,,kyc
+2018-01-15,WITHDRAWAL,0.25,0,5.00,old-wd-1,"Withdrawal confirmation",evidence/2018-01-15_withdrawal.eml,<txid>,<address>,kyc
+```
+
+`BUY`/`SELL` need `btc` and `eur_per_btc`; `DEPOSIT`/`WITHDRAWAL` need only
+`btc` and carry basis without a taxable disposal. The exchange review page links
+each event to its evidence file, and the withdrawal to a provenance page when
+the `txid` exists in the local chain DB. Everything else stays visible as a
+warning rather than disappearing.
+
+### Exchange and receipt review pages
+
+`utxoproof run` writes `reports/exchange/index.html` plus one page per exchange
+account. Each page shows trades, transfers, receipts, the bank row that
+corroborates each euro leg, and the chain transaction when one is known. The
+bank review page gains a receipt column and red unmatched rows; the overview
+shows a "Needs review" alert with counts. `imports/exchange-links.csv` is the
+same join in machine-readable form and is included in the evidence ZIP.
 
 Preview the number, then build the report bundle:
 

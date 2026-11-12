@@ -24,8 +24,9 @@ def test_discover_example_tree() -> None:
         "broker",
     }
     assert result["checks"]["labels"] == 4
-    assert result["checks"]["bank_rows"] == 4
-    assert result["checks"]["exchange_txs"] == 6
+    assert result["checks"]["bank_rows"] == 6
+    assert result["checks"]["exchange_txs"] == 13
+    assert result["checks"]["receipts"] == 2
 
 
 def test_plan_lists_all_steps() -> None:
@@ -78,9 +79,21 @@ def test_offline_run_builds_account_site(tmp_path: Path) -> None:
     assert (data / "utxoproof.db").is_file()
     assert (data / "imports" / "manual.csv").is_file()
     assert (data / "imports" / "bank-rows.csv").is_file()
+    assert (data / "imports" / "exchange-links.csv").is_file()
     assert (data / "reports" / "2023" / "report.html").is_file()
     assert (data / "reports" / "overview" / "overview.html").is_file()
     assert (data / "reports" / "entities" / "kbc-checking.html").is_file()
+    assert (data / "reports" / "exchange" / "index.html").is_file()
+    assert (data / "reports" / "exchange" / "bisq.html").is_file()
+    assert (data / "reports" / "exchange" / "old-exchange.html").is_file()
+    assert list((data / "reports" / "exchange" / "receipts" / "bisq").glob("*.pdf"))
+    bisq_html = (data / "reports" / "exchange" / "bisq.html").read_text(encoding="utf-8")
+    assert "BISQ-2023-0001" in bisq_html
+    assert "20230227_ES7200495" in bisq_html
+    assert "tier-exact" in bisq_html
+    bank_html = (data / "reports" / "bank" / "bank.html").read_text(encoding="utf-8")
+    assert "alert-warn" in bank_html
+    assert "row-unmatched" in bank_html
     import zipfile
 
     zips = list((data / "reports" / "2023").glob("utxoproof_evidence_2023_*.zip"))
@@ -90,6 +103,12 @@ def test_offline_run_builds_account_site(tmp_path: Path) -> None:
     assert "sources/accounts/ledger-main/account.toml" in names
     assert "sources/utxoproof.toml" not in names
     assert "intermediate/manual.csv" in names
+    assert "intermediate/exchange-links.csv" in names
+    assert "intermediate/exchange-trades.csv" in names
+    assert "intermediate/exchange-transfers.csv" in names
+    assert "intermediate/exchange-receipts.csv" in names
+    assert any(name.startswith("sources/accounts/bisq/receipts/") for name in names)
+    assert any(name.startswith("sources/accounts/old-exchange/evidence/") for name in names)
     import sqlite3
 
     db = sqlite3.connect(data / "utxoproof.db")
@@ -97,7 +116,7 @@ def test_offline_run_builds_account_site(tmp_path: Path) -> None:
     labels = db.execute("SELECT COUNT(*) FROM labels").fetchone()[0]
     scripts = db.execute("SELECT COUNT(*) FROM account_scripts").fetchone()[0]
     db.close()
-    assert accounts == 7
+    assert accounts == 9
     assert labels == 4
     assert scripts == 120  # 3 wallets x 2 chains x 20 gap
     after = {
@@ -106,6 +125,25 @@ def test_offline_run_builds_account_site(tmp_path: Path) -> None:
         if path.is_file()
     }
     assert after == before
+
+
+def test_report_only_reuses_persisted_bank_rows(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    base = {
+        "input_dir": EXAMPLE,
+        "data_dir": data,
+        "offline": True,
+        "year": 2023,
+        "as_of": "2023-12-31",
+        "no_zip": True,
+    }
+    assert run(RunOptions(**base)) == 0
+    assert run(RunOptions(**base, only=("report", "portfolio"))) == 0
+    bisq_html = (data / "reports" / "exchange" / "bisq.html").read_text(encoding="utf-8")
+    assert "tier-strong" in bisq_html
+    assert "no bank row" not in bisq_html
+    links = (data / "imports" / "exchange-links.csv").read_text(encoding="utf-8")
+    assert "2023-02-27,-308.50" in links
 
 
 def test_bad_only_step_is_rejected() -> None:

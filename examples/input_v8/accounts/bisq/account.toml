@@ -1,0 +1,7 @@
+kind = "exchange"
+label = "Bisq"
+exchange = "bisq"
+trade_history = "tradeHistory.csv"
+transactions = "transactions.csv"
+receipts = "receipts/*.pdf"
+tags = ["exchange", "non-kyc"]

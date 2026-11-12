@@ -5,6 +5,24 @@
 {% block content %}
 <div class="report-intro">{{ intro }}</div>
 
+{% if warnings or unmatched %}
+<div class="alert alert-warn">
+  <h3>Unmatched / needs review</h3>
+  <ul>
+    {% for warning in warnings %}
+    <li>{{ warning }}</li>
+    {% endfor %}
+    {% if unmatched %}<li>{{ unmatched | length }} statement row{% if unmatched | length != 1 %}s{% endif %} without a matching exchange trade.</li>{% endif %}
+  </ul>
+  {% if exchange_href %}<p><a href="{{ exchange_href }}">Open the exchange review</a> for every trade, transfer and receipt in one place.</p>{% endif %}
+</div>
+{% else %}
+<div class="alert alert-ok">
+  <h3>All supplied items matched</h3>
+  <p>Every statement row and receipt found a corroborating trade. Nothing is waiting for manual review.</p>
+</div>
+{% endif %}
+
 <div class="metric-grid">
   <div class="metric">
     <span class="metric-label">Statement rows</span>
@@ -42,18 +60,19 @@
 
 <h2>Statement rows</h2>
 <div class="table-wrap"><table>
-  <tr><th>Date</th><th>Description</th><th>Amount (EUR)</th><th>Counterparty</th><th>Reference</th>{% if has_accounts %}<th>Account</th>{% endif %}<th>Source</th></tr>
+  <tr><th>Date</th><th>Description</th><th>Amount (EUR)</th><th>Counterparty</th><th>Reference</th>{% if has_accounts %}<th>Account</th>{% endif %}<th>Source</th><th>Receipt</th></tr>
   {% for r in rows %}
-  <tr><td>{{ r.date }}</td><td>{{ r.description }}</td><td>{{ r.amount }}</td><td><code>{{ r.counterparty }}</code></td><td>{{ r.reference }}</td>{% if has_accounts %}<td>{{ r.account }}</td>{% endif %}<td><code>{{ r.source }}</code></td></tr>
+  <tr{% if r.unmatched %} class="row-unmatched"{% endif %}><td>{{ r.date }}</td><td>{{ r.description }}</td><td>{{ r.amount }}</td><td><code>{{ r.counterparty }}</code></td><td>{{ r.reference }}</td>{% if has_accounts %}<td>{{ r.account }}</td>{% endif %}<td><code>{{ r.source }}</code></td><td>{% if r.receipt == "—" %}—{% else %}<code>{{ r.receipt }}</code>{% endif %}</td></tr>
   {% endfor %}
 </table></div>
+{% if unmatched %}<p class="sub">Red rows have no matching exchange trade and need manual review.</p>{% endif %}
 
 <h2>Fiat-leg matches</h2>
 {% if matches %}
 <div class="table-wrap"><table>
-  <tr><th>Trade</th><th>Trade fiat (EUR)</th><th>Tier</th><th>Why matched</th><th>Statement date</th><th>Description</th><th>Amount (EUR)</th>{% if has_accounts %}<th>Account</th>{% endif %}<th>Source</th><th>Chain</th></tr>
+  <tr><th>Trade</th><th>Trade fiat (EUR)</th><th>Tier</th><th>Why matched</th><th>Statement date</th><th>Description</th><th>Amount (EUR)</th>{% if has_accounts %}<th>Account</th>{% endif %}<th>Source</th><th>Receipt</th><th>Chain</th></tr>
   {% for m in matches %}
-  <tr><td>{{ m.trade }}</td><td>{{ m.trade_fiat }}</td><td>{{ m.tier }}</td><td>{{ m.reasons }}</td><td>{{ m.date }}</td><td>{{ m.description }}</td><td>{{ m.amount }}</td>{% if has_accounts %}<td>{{ m.account }}</td>{% endif %}<td><code>{{ m.source }}</code></td><td>{% if m.chain_href %}<a href="{{ m.chain_href }}"><code>{{ m.chain }}</code></a>{% else %}<code>{{ m.chain }}</code>{% endif %}</td></tr>
+  <tr><td>{{ m.trade }}</td><td>{{ m.trade_fiat }}</td><td><span class="tier tier-{{ m.tier }}">{{ m.tier }}</span></td><td>{{ m.reasons }}</td><td>{{ m.date }}</td><td>{{ m.description }}</td><td>{{ m.amount }}</td>{% if has_accounts %}<td>{{ m.account }}</td>{% endif %}<td><code>{{ m.source }}</code></td><td>{% if m.receipt_href %}<a href="{{ m.receipt_href }}"><code>{{ m.receipt }}</code></a>{% elif m.receipt == "missing" %}<span class="missing">missing</span>{% else %}—{% endif %}</td><td>{% if m.chain_href %}<a href="{{ m.chain_href }}"><code>{{ m.chain }}</code></a>{% else %}<code>{{ m.chain }}</code>{% endif %}</td></tr>
   {% endfor %}
 </table></div>
 {% else %}
@@ -65,7 +84,7 @@
 <div class="table-wrap"><table>
   <tr><th>Date</th><th>Description</th><th>Amount (EUR)</th>{% if has_accounts %}<th>Account</th>{% endif %}<th>Source</th></tr>
   {% for r in unmatched %}
-  <tr><td>{{ r.date }}</td><td>{{ r.description }}</td><td>{{ r.amount }}</td>{% if has_accounts %}<td>{{ r.account }}</td>{% endif %}<td><code>{{ r.source }}</code></td></tr>
+  <tr class="row-unmatched"><td>{{ r.date }}</td><td>{{ r.description }}</td><td>{{ r.amount }}</td>{% if has_accounts %}<td>{{ r.account }}</td>{% endif %}<td><code>{{ r.source }}</code></td></tr>
   {% endfor %}
 </table></div>
 {% else %}

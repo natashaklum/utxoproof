@@ -1,0 +1,62 @@
+{% extends "base.html.j2" %}
+{% block title %}utxoproof exchange review{% endblock %}
+{% block kicker %}Exchange and receipt review{% endblock %}
+{% block heading %}Exchange review{% endblock %}
+{% block content %}
+<div class="report-intro">{{ intro }}</div>
+
+{% if review_total or warnings %}
+<div class="alert alert-warn">
+  <h3>{{ review_total }} item{% if review_total != 1 %}s{% endif %} need review</h3>
+  <ul>
+    {% for warning in warnings %}
+    <li>{{ warning }}</li>
+    {% endfor %}
+    {% if review_total %}<li>{{ review_total }} account-level item{% if review_total != 1 %}s{% endif %} — open an account below.</li>{% endif %}
+  </ul>
+  <p>Unmatched rows are shown in red on the account pages.</p>
+</div>
+{% else %}
+<div class="alert alert-ok">
+  <h3>Every supplied item is linked</h3>
+  <p>Trades, transfers and receipts found their corroborating bank rows or chain transactions.</p>
+</div>
+{% endif %}
+
+<div class="metric-grid">
+  <div class="metric">
+    <span class="metric-label">Exchange accounts</span>
+    <strong class="metric-value">{{ accounts | length }}</strong>
+    <span class="metric-note">Kraken, Bisq and manual sources</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Trades</span>
+    <strong class="metric-value">{{ trade_total }}</strong>
+    <span class="metric-note">BUY / SELL rows in the pool</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Transfers</span>
+    <strong class="metric-value">{{ transfer_total }}</strong>
+    <span class="metric-note">deposits and withdrawals</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">SEPA receipts</span>
+    <strong class="metric-value">{{ receipt_total }}</strong>
+    <span class="metric-note">{{ review_total }} item(s) waiting for review</span>
+  </div>
+</div>
+
+<h2>Accounts</h2>
+<div class="table-wrap"><table>
+  <tr><th>Account</th><th>Exchange</th><th>Trades</th><th>Transfers</th><th>Receipts</th><th>Receipts matched</th><th>Needs review</th><th>Review page</th></tr>
+  {% for a in accounts %}
+  <tr{% if a.errors %} class="row-unmatched"{% endif %}><td><strong>{{ a.label }}</strong></td><td>{{ a.exchange }}</td><td>{{ a.trades }}</td><td>{{ a.transfers }}</td><td>{{ a.receipts }}</td><td>{{ a.matched_receipts }}</td><td>{% if a.unmatched %}<span class="missing">{{ a.unmatched }}</span>{% else %}0{% endif %}</td><td><a href="{{ a.href }}">Open {{ a.label }} review</a></td></tr>
+  {% endfor %}
+</table></div>
+
+<h2>Related evidence</h2>
+<ul>
+  <li><a href="{{ bank_href }}">Bank review</a> — statement rows, fiat-leg matches and unmatched rows.</li>
+  {% if tax_href %}<li><a href="{{ tax_href }}">Tax report</a> — the trades above valued at moving-average cost.</li>{% endif %}
+</ul>
+{% endblock %}

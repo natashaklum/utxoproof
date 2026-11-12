@@ -37,15 +37,46 @@ def test_binance_fees_and_skip() -> None:
     assert all(tx.exchange == "binance" for tx in txs)
 
 
-def test_bisq_is_non_kyc_and_requires_direction(tmp_path: Path) -> None:
-    txs = parse_bisq_csv(FIXTURES / "bisq_2023.csv")
-    assert [(tx.kind, tx.kyc_status) for tx in txs] == [("BUY", "non_kyc"), ("SELL", "non_kyc")]
+def test_bisq_is_non_kyc_and_reads_real_headers(tmp_path: Path) -> None:
+    from utxoproof.bisq_csv import (
+        parse_bisq_trade_history,
+        parse_bisq_transactions,
+    )
+
+    txs, warnings = parse_bisq_trade_history(
+        FIXTURES / "bisq_2023.csv", btc_eur=lambda _day: Decimal("30000")
+    )
+    assert warnings == []
+    assert [(tx.kind, tx.kyc_status) for tx in txs] == [
+        ("BUY", "non_kyc"),
+        ("SELL", "non_kyc"),
+        ("SELL", "non_kyc"),  # Buy XMR == sell BTC on a crypto market
+    ]
     assert txs[0].source_type == "p2p_purchase"
+    assert txs[0].market == "EUR/BTC"
+    assert txs[0].has_fiat_leg is True
+    assert txs[2].market == "XMR/BTC"
+    assert txs[2].quote_currency == "XMR"
+    assert txs[2].has_fiat_leg is False
+
+    transfers, _warnings = parse_bisq_transactions(FIXTURES / "bisq_transactions_2023.csv")
+    assert [(tx.kind, tx.txid[:4]) for tx in transfers] == [
+        ("DEPOSIT", "aaaa"),
+        ("WITHDRAWAL", "bbbb"),
+    ]
+    assert transfers[0].trade_refs == ("B1",)
 
     bad = tmp_path / "bisq_bad.csv"
-    bad.write_text("Trade ID,Date,Market,Direction,Price,Amount\nX,2023-01-01,BTC/EUR,,28000,0.1\n")
+    bad.write_text(
+        "Trade ID,Date/Time,Market,Price,Amount in BTC,Amount,Currency,"
+        "Offer type,Status\n"
+        "X,2023-01-01T00:00:00Z,EUR/BTC,28000,0.1,2800,EUR,Sideways,Completed\n",
+        encoding="utf-8",
+    )
     with pytest.raises(ValueError, match="direction"):
-        parse_bisq_csv(bad)
+        parse_bisq_trade_history(bad, btc_eur=lambda _day: Decimal("30000"))
+
+    assert len(parse_bisq_csv(FIXTURES / "bisq_2023.csv")) == 3
 
 
 def test_coinbase_end_to_end_gain(tmp_path: Path) -> None:

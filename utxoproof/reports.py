@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime
 import os
+import shutil
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -21,8 +22,10 @@ from utxoproof import __version__
 from utxoproof.advisory import UTXOAdvisory, portfolio_summary
 from utxoproof.banks import BankRow
 from utxoproof.belgian_tax import COMMUNAL_SURCHARGE_DEFAULT, apply_belgian_tax
+from utxoproof.bisq_receipts import BisqReceipt, ReceiptMatch
 from utxoproof.cli import PriceAt, compute_details
 from utxoproof.config import ClassifierConfig
+from utxoproof.exchange import ExchangeTx
 from utxoproof.linking import TrailCandidate
 from utxoproof.matching import FiatMatch
 from utxoproof.portfolio import Portfolio
@@ -163,6 +166,12 @@ INTROS = {
         "Statements corroborate the euro legs of your trades; they never enter "
         "the cost pool."
     ),
+    "exchange": (
+        "Exchange review: every trade, transfer and SEPA receipt in one place, "
+        "with the bank row that corroborates each euro leg. Trades enter the "
+        "Bitcoin pool; receipts and bank rows stay evidence. Red rows are "
+        "unmatched and need a human decision — nothing is guessed."
+    ),
     "alltime": (
         "Realised gains year by year plus what is still sitting in inventory "
         "at cost. The long view across all imported history."
@@ -302,6 +311,7 @@ def account_site_pages(
     tax_years: list[int] | None = None,
     *,
     bank: bool = True,
+    exchange: bool = False,
     full_report_year: int | None = None,
 ) -> list[tuple[str, str]]:
     """Nav candidates for the v8 account layout (``utxoproof run``).
@@ -317,6 +327,8 @@ def account_site_pages(
         pages.append((f"Full report {full_report_year}", f"{full_report_year}/fullreport.html"))
     if bank:
         pages.append(("Bank review", "bank/bank.html"))
+    if exchange:
+        pages.append(("Exchange review", "exchange/index.html"))
     return pages
 
 
@@ -429,8 +441,12 @@ def entity_review_links(
         title = ""
         if entity.kind in ("bank", "credit_card"):
             target, title = root / "bank" / "bank.html", "Bank review"
-        elif entity.kind == "exchange" and year is not None:
-            target, title = root / str(year) / "report.html", f"Tax report {year}"
+        elif entity.kind == "exchange":
+            exchange_page = root / "exchange" / f"{entity.id}.html"
+            if exchange_page.is_file():
+                target, title = exchange_page, "Exchange review"
+            elif year is not None:
+                target, title = root / str(year) / "report.html", f"Tax report {year}"
         if target is not None:
             links[entity.id] = {"title": title, "href": os.path.relpath(target, parent)}
     return links
@@ -667,6 +683,321 @@ def write_advisory_page(
     return target
 
 
+def _provenance_href(txid: str, provenance_dir: str | Path | None, out_dir: str | Path) -> str:
+    """Relative link to the first provenance page for ``txid``, if built."""
+    if not txid or provenance_dir is None:
+        return ""
+    for vout in range(32):
+        candidate = Path(provenance_dir) / f"provenance_{txid}_{vout}.html"
+        if candidate.is_file():
+            return os.path.relpath(candidate, Path(out_dir))
+    return ""
+
+
+def _transfer_for_trade(trade: ExchangeTx, transfers: list[ExchangeTx]) -> ExchangeTx | None:
+    refs = set(trade.trade_refs)
+    for transfer in transfers:
+        if refs & set(transfer.trade_refs):
+            return transfer
+    return None
+
+
+def write_exchange_pages(
+    accounts: list[dict[str, str]],
+    transactions: list[ExchangeTx],
+    receipts: list[BisqReceipt],
+    bank_matches: list[FiatMatch],
+    receipt_matches: list[ReceiptMatch],
+    out_dir: str | Path,
+    demo_notice: str = "",
+    provenance_dir: str | Path | None = None,
+    bank_href: str = "../bank/bank.html",
+    tax_href: str = "",
+    warnings: list[str] | None = None,
+    nav: list[dict[str, object]] | None = None,
+    site_root: str | Path | None = None,
+) -> list[Path]:
+    """Render the exchange index and one review page per exchange account.
+
+    Trades, transfers, SEPA receipts and their bank corroboration are shown
+    side by side. Unmatched items are listed in a red review panel; receipt
+    PDFs are copied next to the report so every link still works offline.
+    """
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    warnings = list(warnings or [])
+    bank_by_tx = {id(match.tx): match for match in bank_matches}
+    receipt_by_trade = {
+        id(match.trade): match for match in receipt_matches if match.trade is not None
+    }
+    receipt_by_id = {id(match.receipt): match for match in receipt_matches}
+    written: list[Path] = []
+
+    account_contexts: list[dict[str, object]] = []
+    review_total = 0
+    error_total = 0
+    trade_total = 0
+    transfer_total = 0
+    receipt_total = 0
+    for account in accounts:
+        account_id = str(account.get("id", ""))
+        page_target = out / f"{account_id}.html"
+        account_txs = [tx for tx in transactions if tx.account_id == account_id]
+        trades = [tx for tx in account_txs if tx.kind in ("BUY", "SELL")]
+        transfers = [tx for tx in account_txs if tx.kind in ("DEPOSIT", "WITHDRAWAL")]
+        account_receipts = [receipt for receipt in receipts if receipt.account_id == account_id]
+        review: list[dict[str, str]] = []
+
+        receipt_rows = []
+        for receipt in account_receipts:
+            match = receipt_by_id.get(id(receipt))
+            bank = match.bank if match is not None else None
+            receipt_copy = out / "receipts" / account_id / receipt.filename
+            receipt_copy.parent.mkdir(parents=True, exist_ok=True)
+            if receipt.path.is_file():
+                shutil.copy2(receipt.path, receipt_copy)
+            tier = match.tier if match is not None else "unmatched"
+            receipt_rows.append(
+                {
+                    "date": receipt.date.isoformat(),
+                    "filename": receipt.filename,
+                    "href": os.path.relpath(receipt_copy, page_target.parent),
+                    "btc": f"{receipt.btc:.8f}",
+                    "price": f"{receipt.price_eur:,.2f}",
+                    "eur": f"{receipt.eur_amount:,.2f}",
+                    "counterparty": receipt.iban or "—",
+                    "reference": receipt.reference or "—",
+                    "trade": match.trade.refid if match and match.trade else "—",
+                    "bank": (
+                        f"{getattr(bank, 'date', '')} · {getattr(bank, 'amount_eur', '')} EUR"
+                        if bank is not None
+                        else "—"
+                    ),
+                    "tier": tier,
+                    "reasons": "; ".join(match.reasons or []) if match else "no match",
+                    "sha256": receipt.sha256_short,
+                }
+            )
+            if tier in ("unmatched", "ambiguous"):
+                review.append(
+                    {
+                        "level": "error",
+                        "item": f"Receipt {receipt.filename}",
+                        "detail": (
+                            "; ".join(match.reasons or [])
+                            if match is not None
+                            else "no matching trade"
+                        ),
+                    }
+                )
+
+        trade_rows = []
+        for trade in trades:
+            bank_match = bank_by_tx.get(id(trade))
+            receipt_match = receipt_by_trade.get(id(trade))
+            transfer = _transfer_for_trade(trade, transfers)
+            chain_href = _provenance_href(
+                transfer.txid if transfer is not None else "",
+                provenance_dir,
+                page_target,
+            )
+            bank_cell = "—"
+            bank_tier = "unresolved"
+            bank_reasons = ""
+            if bank_match is not None:
+                bank_cell = (
+                    f"{bank_match.bank.date.isoformat()} · "
+                    f"{bank_match.bank.amount_eur:,.2f} EUR · "
+                    f"{Path(bank_match.bank.source_file).name}"
+                )
+                bank_tier = bank_match.tier
+                bank_reasons = "; ".join(bank_match.reasons)
+            elif trade.has_fiat_leg:
+                review.append(
+                    {
+                        "level": "error",
+                        "item": f"Trade {trade.refid} ({trade.kind} {trade.btc} BTC)",
+                        "detail": "no matching bank statement row",
+                    }
+                )
+            trade_rows.append(
+                {
+                    "date": trade.date.isoformat(),
+                    "kind": trade.kind,
+                    "market": trade.market or trade.quote_currency or "—",
+                    "btc": f"{trade.btc:.8f}",
+                    "quote": (
+                        f"{trade.quote_amount:,.8f} {trade.quote_currency}"
+                        if trade.quote_amount
+                        else "—"
+                    ),
+                    "price": f"{trade.eur_per_btc:,.2f}",
+                    "eur": f"{trade.fiat_amount:,.2f}",
+                    "fee": f"{trade.fee_eur:,.2f}",
+                    "refid": trade.refid,
+                    "status": trade.status or "—",
+                    "has_fiat_leg": trade.has_fiat_leg,
+                    "bank": bank_cell,
+                    "bank_tier": bank_tier,
+                    "bank_reasons": bank_reasons,
+                    "receipt": (
+                        receipt_match.receipt.filename
+                        if receipt_match is not None
+                        else ("missing" if trade.has_fiat_leg else "n/a")
+                    ),
+                    "receipt_tier": (
+                        receipt_match.tier if receipt_match is not None else "unresolved"
+                    ),
+                    "receipt_href": (
+                        os.path.relpath(
+                            out / "receipts" / account_id / receipt_match.receipt.filename,
+                            page_target.parent,
+                        )
+                        if receipt_match is not None
+                        else ""
+                    ),
+                    "chain_href": chain_href,
+                    "txid": transfer.txid if transfer is not None else "",
+                    "details": trade.details or trade.source_label or "—",
+                }
+            )
+            if (
+                trade.has_fiat_leg
+                and receipt_match is None
+                and account_receipts
+                and trade.kind in ("BUY", "SELL")
+            ):
+                review.append(
+                    {
+                        "level": "warn",
+                        "item": f"Trade {trade.refid}",
+                        "detail": "no SEPA receipt PDF matched (bank row may still corroborate)",
+                    }
+                )
+
+        transfer_rows = []
+        for transfer in transfers:
+            chain_href = _provenance_href(transfer.txid, provenance_dir, page_target)
+            if not transfer.txid:
+                review.append(
+                    {
+                        "level": "warn",
+                        "item": (
+                            f"{transfer.kind.title()} {transfer.date.isoformat()} "
+                            f"{transfer.btc} BTC"
+                        ),
+                        "detail": "no transaction id; link this transfer to a chain tx manually",
+                    }
+                )
+            if transfer.evidence:
+                missing = [
+                    name
+                    for name in transfer.evidence
+                    if not (Path(account.get("path", "")) / name).is_file()
+                ]
+                if missing:  # pragma: no cover - parser already validates this
+                    review.append(
+                        {
+                            "level": "error",
+                            "item": f"Evidence for {transfer.refid}",
+                            "detail": "missing file(s): " + ", ".join(missing),
+                        }
+                    )
+            elif transfer.exchange == "manual":
+                review.append(
+                    {
+                        "level": "warn",
+                        "item": f"Manual {transfer.kind.lower()} {transfer.date.isoformat()}",
+                        "detail": "no evidence file attached",
+                    }
+                )
+            transfer_rows.append(
+                {
+                    "date": transfer.date.isoformat(),
+                    "kind": transfer.kind,
+                    "btc": f"{transfer.btc:.8f}",
+                    "txid": transfer.txid or "—",
+                    "address": transfer.address or "—",
+                    "details": transfer.details or "—",
+                    "evidence": ";".join(transfer.evidence) or "—",
+                    "chain_href": chain_href,
+                    "source": transfer.source_evidence,
+                }
+            )
+
+        fiat_trades = [row for row in trade_rows if row["has_fiat_leg"]]
+        matched_bank = sum(1 for row in fiat_trades if row["bank_tier"] != "unresolved")
+        matched_receipts = sum(1 for row in receipt_rows if row["tier"] in ("exact", "approximate"))
+        context = {
+            "id": account_id,
+            "label": account.get("label", account_id),
+            "exchange": account.get("exchange", ""),
+            "trades": trade_rows,
+            "transfers": transfer_rows,
+            "receipts": receipt_rows,
+            "review": review,
+            "warnings": warnings,
+            "fiat_trades": len(fiat_trades),
+            "matched_bank": matched_bank,
+            "matched_receipts": matched_receipts,
+            "bank_href": bank_href,
+            "tax_href": tax_href,
+            "intro": INTROS["exchange"],
+            "disclaimer": DISCLAIMER,
+            "demo_notice": demo_notice,
+            "nav": _resolve_nav(nav, site_root, page_target),
+        }
+        page_target.write_text(
+            _env().get_template("exchange.html.j2").render(**context),
+            encoding="utf-8",
+        )
+        written.append(page_target)
+        review_total += len(review)
+        error_total += sum(1 for item in review if item["level"] == "error")
+        trade_total += len(trade_rows)
+        transfer_total += len(transfer_rows)
+        receipt_total += len(receipt_rows)
+        account_contexts.append(
+            {
+                "id": account_id,
+                "label": account.get("label", account_id),
+                "exchange": account.get("exchange", ""),
+                "href": page_target.name,
+                "trades": len(trade_rows),
+                "transfers": len(transfer_rows),
+                "receipts": len(receipt_rows),
+                "matched_receipts": matched_receipts,
+                "unmatched": len(review),
+                "errors": sum(1 for item in review if item["level"] == "error"),
+            }
+        )
+
+    index_target = out / "index.html"
+    index_context = {
+        "accounts": account_contexts,
+        "warnings": warnings,
+        "review_total": review_total,
+        "error_total": error_total,
+        "trade_total": trade_total,
+        "transfer_total": transfer_total,
+        "receipt_total": receipt_total,
+        "bank_href": os.path.relpath(
+            Path(out_dir).parent / "bank" / "bank.html", index_target.parent
+        ),
+        "tax_href": tax_href,
+        "intro": INTROS["exchange"],
+        "disclaimer": DISCLAIMER,
+        "demo_notice": demo_notice,
+        "nav": _resolve_nav(nav, site_root, index_target),
+    }
+    index_target.write_text(
+        _env().get_template("exchange_index.html.j2").render(**index_context),
+        encoding="utf-8",
+    )
+    written.append(index_target)
+    return written
+
+
 def write_bank_page(
     bank: str,
     rows: list[BankRow],
@@ -677,6 +1008,9 @@ def write_bank_page(
     provenance_dir: str | Path | None = None,
     nav: list[dict[str, object]] | None = None,
     site_root: str | Path | None = None,
+    receipt_matches: list[ReceiptMatch] | None = None,
+    warnings: list[str] | None = None,
+    exchange_href: str = "",
 ) -> Path:
     """Render parsed bank-statement rows + fiat-leg match review into ``out_dir``.
 
@@ -704,10 +1038,33 @@ def write_bank_page(
     target = out / "bank.html"
     from utxoproof.portfolio import donut_legend, donut_ring
 
+    receipt_by_trade = {
+        id(match.trade): match for match in receipt_matches or [] if match.trade is not None
+    }
+    receipt_by_bank = {
+        id(match.bank): match for match in receipt_matches or [] if match.bank is not None
+    }
+    matched_bank_ids = {id(match.bank) for match in matches}
+
+    def receipt_cell(match: FiatMatch) -> dict[str, str]:
+        receipt = receipt_by_trade.get(id(match.tx))
+        if receipt is None:
+            return {"receipt": "missing", "receipt_href": "", "receipt_tier": "unresolved"}
+        account_id = receipt.receipt.account_id or "exchange"
+        href = os.path.relpath(
+            out.parent / "exchange" / "receipts" / account_id / receipt.receipt.filename,
+            out,
+        )
+        return {
+            "receipt": receipt.receipt.filename,
+            "receipt_href": href,
+            "receipt_tier": receipt.tier,
+        }
+
     matched_eur = sum((abs(m.bank.amount_eur) for m in matches), Decimal("0"))
     unmatched_eur = sum((abs(r.amount_eur) for r in unmatched), Decimal("0"))
     review_split = [("matched", matched_eur), ("unmatched", unmatched_eur)]
-    review_colors = {"matched": "#3faf6e", "unmatched": "#e8a13d"}
+    review_colors = {"matched": "#3faf6e", "unmatched": "#b42318"}
     has_accounts = any(r.account_id for r in rows)
     target.write_text(
         _env()
@@ -723,6 +1080,10 @@ def write_bank_page(
                     "reference": r.reference or "—",
                     "account": r.account_id or "—",
                     "source": Path(r.source_file).name if r.source_file else "—",
+                    "unmatched": id(r) not in matched_bank_ids,
+                    "receipt": (
+                        receipt_by_bank[id(r)].receipt.filename if id(r) in receipt_by_bank else "—"
+                    ),
                 }
                 for r in rows
             ],
@@ -738,6 +1099,7 @@ def write_bank_page(
                     "account": m.bank.account_id or "—",
                     "source": Path(m.bank.source_file).name if m.bank.source_file else "—",
                     **chain_cell(m),
+                    **receipt_cell(m),
                 }
                 for m in matches
             ],
@@ -756,6 +1118,8 @@ def write_bank_page(
             demo_notice=demo_notice,
             nav=_resolve_nav(nav, site_root, target),
             has_accounts=has_accounts,
+            warnings=list(warnings or []),
+            exchange_href=exchange_href,
             review_donut=donut_ring(review_split, colors=review_colors),
             review_legend=[
                 {"color": color, "label": label, "value": f"{value:,.2f}"}
@@ -1160,6 +1524,7 @@ def build_overview_context(
     price_note: str,
     price_history_svg: str = "",
     reports: list[dict[str, str]] | None = None,
+    alerts: list[dict[str, str]] | None = None,
 ) -> dict[str, object]:
     """Preformatted context dict for the overview section."""
     from utxoproof.portfolio import donut_legend, donut_ring, svg_bars
@@ -1205,6 +1570,7 @@ def build_overview_context(
         ],
         "price_history_svg": price_history_svg,
         "reports": list(reports or []),
+        "alerts": list(alerts or []),
         "entities": [
             {
                 "href": f"../entities/{eid}.html",
@@ -1230,6 +1596,7 @@ def write_overview_page(
     reports: list[dict[str, str]] | None = None,
     nav: list[dict[str, object]] | None = None,
     site_root: str | Path | None = None,
+    alerts: list[dict[str, str]] | None = None,
 ) -> Path:
     """Render the portfolio dashboard into ``out_dir``.
 
@@ -1249,7 +1616,7 @@ def write_overview_page(
         .get_template("overview.html.j2")
         .render(
             overview=build_overview_context(
-                portfolio, as_of, price_note, price_history_svg, reports
+                portfolio, as_of, price_note, price_history_svg, reports, alerts
             ),
             intro=INTROS["overview"],
             disclaimer=DISCLAIMER,

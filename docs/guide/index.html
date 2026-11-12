@@ -155,7 +155,7 @@
 
           <div class="grid-3">
             <div class="card"><div class="icon"><svg aria-hidden="true"><use href="#i-wallet"></use></svg></div><h3>Chain ownership</h3><p>Descriptors, xpubs and BIP329 labels. This is the only pile that establishes which on-chain outputs are yours.</p></div>
-            <div class="card teal"><div class="icon"><svg aria-hidden="true"><use href="#i-exchange"></use></svg></div><h3>Fiat &amp; trades</h3><p>Bank statements, card statements, Kraken ledgers/trades and broker holdings. These explain the euros around the BTC.</p></div>
+            <div class="card teal"><div class="icon"><svg aria-hidden="true"><use href="#i-exchange"></use></svg></div><h3>Fiat &amp; trades</h3><p>Bank statements, card statements, Kraken, Bisq, manual exchange events and broker holdings. These explain the euros around the BTC.</p></div>
             <div class="card red"><div class="icon"><svg aria-hidden="true"><use href="#i-file"></use></svg></div><h3>Human evidence</h3><p>Withdrawal confirmations, emails, scans and screenshots. Attach them after the DB exists; originals stay untouched.</p></div>
           </div>
 
@@ -167,12 +167,14 @@
               <tbody>
                 <tr><td><strong>Exported descriptor</strong> or xpub</td><td><code>accounts/&lt;id&gt;/receive.txt</code> and <code>change.txt</code></td><td><span class="pill hot">wallet</span></td><td>Watch-only only. One folder per descriptor set; duplicate scripts across folders are a hard error.</td></tr>
                 <tr><td><strong>BIP329 labels</strong></td><td><code>accounts/&lt;id&gt;/labels.jsonl</code></td><td><span class="pill hot">wallet</span></td><td>Labels are display metadata. They never create ownership, tags or tax treatment.</td></tr>
-                <tr><td><strong>Kraken ledgers + trades</strong></td><td><code>ledgers.csv</code> and <code>trades.csv</code></td><td><span class="pill">exchange</span></td><td>Keep both files and all years. v8 account manifests currently support Kraken only.</td></tr>
+                <tr><td><strong>Kraken ledgers + trades</strong></td><td><code>ledgers.csv</code> and <code>trades.csv</code></td><td><span class="pill">exchange</span></td><td>Keep both files and all years.</td></tr>
+                <tr><td><strong>Bisq trade history + transfers</strong></td><td><code>tradeHistory.csv</code> and <code>transactions.csv</code></td><td><span class="pill">exchange</span></td><td>Non-KYC P2P. EUR and BTC-quoted crypto markets are supported; keep the SEPA receipt PDFs too.</td></tr>
+                <tr><td><strong>Old exchange with no CSV</strong></td><td><code>events.csv</code> + <code>evidence/</code></td><td><span class="pill">exchange</span></td><td>Hand-enter each buy/sell/deposit/withdrawal. List the email or PDF that proves it.</td></tr>
                 <tr><td><strong>Bank statement CSV</strong></td><td><code>accounts/&lt;id&gt;/statements/**/*.csv</code></td><td><span class="pill">bank</span></td><td>EUR only. A profile parser is required; a balance alone is not a bank account.</td></tr>
                 <tr><td><strong>Credit-card statement</strong></td><td><code>accounts/&lt;id&gt;/statements/**/*.csv</code></td><td><span class="pill">credit_card</span></td><td>A card is a liability. Put the owed balance in as a negative amount.</td></tr>
                 <tr><td><strong>Broker holdings</strong></td><td><code>account.toml</code> → <code>[[holdings]]</code></td><td><span class="pill">broker</span></td><td>Informational only. It never enters BTC tax math.</td></tr>
                 <tr><td><strong>PDFs, scans, emails</strong></td><td><code>utxoproof attach</code> after the DB exists</td><td><span class="pill">evidence</span></td><td>Originals are copied and hashed; re-attaching identical content is a no-op.</td></tr>
-                <tr><td><strong>Coinbase / Binance / Bisq / manual CSV</strong></td><td>Legacy <code>import</code> → <code>manual.csv</code></td><td><span class="pill info">legacy path</span></td><td>Convert with <code>utxoproof import</code> and use the report path until a v8 exchange adapter lands.</td></tr>
+                <tr><td><strong>Coinbase / Binance</strong></td><td>Legacy <code>import</code> → <code>manual.csv</code></td><td><span class="pill info">legacy path</span></td><td>Convert with <code>utxoproof import</code> and use the report path until a v8 exchange adapter lands.</td></tr>
               </tbody>
             </table>
           </div>
@@ -454,9 +456,32 @@ label = "Kraken"
 exchange = "kraken"
 ledgers = ["ledgers.csv"]
 trades = ["trades.csv"]</pre>
-          <div class="callout danger">
-            <span class="label">Current v8 limit</span>
-            <p>Exchange account folders currently support <strong>Kraken only</strong>. Coinbase, Binance and Bisq histories can be converted with <code>utxoproof import --type ...</code> and used through the legacy report path, but they do not yet produce a v8 exchange account page. Do not label a non-Kraken export as Kraken to force it through.</p>
+          <h3>Bisq: trades, transfers and SEPA receipts</h3>
+          <p>Export <strong>tradeHistory.csv</strong> and <strong>transactions.csv</strong> from Bisq and put them in the account folder. Bisq is non-KYC by default. EUR markets use the stated EUR/BTC price; XMR/BTC and ETH/BTC trades are valued at the bundled BTC/EUR daily close because only the BTC leg enters the Bitcoin pool. A bare <code>Buy</code>/<code>Sell</code> on a crypto market is read from the altcoin side; set <code>crypto_direction = "btc"</code> if your export uses the BTC side.</p>
+          <pre><span class="c"># accounts/bisq/account.toml</span>
+kind = "exchange"
+label = "Bisq"
+exchange = "bisq"
+trade_history = "tradeHistory.csv"
+transactions = "transactions.csv"
+receipts = "receipts/*.pdf"</pre>
+          <p>SEPA receipt PDFs are matched to trades and bank rows by filename (date, BTC amount, EUR/BTC price, market). The PDF stays evidence; no text extraction is attempted. Every trade, transfer and receipt appears on the exchange review page, with the bank row and chain transaction it links to. Unmatched items are red and listed in a review panel — never guessed.</p>
+
+          <h3>An old exchange with no CSV</h3>
+          <p>When the exchange is gone and only confirmation emails remain, hand-write <code>events.csv</code>. Each row is one BUY, SELL, DEPOSIT or WITHDRAWAL. The <code>evidence</code> column is a semicolon-separated list of files relative to the account folder; the runner checks that every file exists and includes the account folder in the evidence ZIP.</p>
+          <pre><span class="c"># accounts/old-exchange/account.toml</span>
+kind = "exchange"
+label = "Old exchange (manual)"
+exchange = "manual"
+events = "events.csv"
+
+<span class="c"># events.csv</span>
+date,kind,btc,eur_per_btc,fee_eur,refid,note,evidence,txid,address,kyc_status
+2017-11-20,BUY,0.25,6000.00,12.50,old-buy-1,"Purchase email",evidence/2017-11-20_purchase.eml,,,kyc
+2018-01-15,WITHDRAWAL,0.25,0,5.00,old-wd-1,"Withdrawal email",evidence/2018-01-15_withdrawal.eml,&lt;txid&gt;,&lt;address&gt;,kyc</pre>
+          <div class="callout info">
+            <span class="label">What enters the pool</span>
+            <p>BUY and SELL enter the moving-average pool. DEPOSIT and WITHDRAWAL move coins and proportional basis without creating a taxable disposal. Bank rows and receipts corroborate the euro side; they never enter the cost pool.</p>
           </div>
 
           <h3>Broker accounts are informational</h3>
@@ -509,7 +534,9 @@ trades = ["trades.csv"]</pre>
                 <tr><td><code>descriptor/derivation error</code></td><td>The descriptor is truncated, has a bad checksum, or the network is wrong.</td><td>Re-export from the wallet. Do not hand-edit the checksum.</td></tr>
                 <tr><td><code>no statement CSV files matched</code></td><td>The bank/card folder has no CSV under its statement pattern.</td><td>Add the statements or set <code>statements</code> explicitly.</td></tr>
                 <tr><td><code>wallet needs descriptors or xpub</code></td><td>The wallet manifest has no ownership source.</td><td>Export the watch-only descriptor or add <code>xpub</code> + <code>fingerprint</code>.</td></tr>
-                <tr><td><code>exchange must be one of kraken</code></td><td>An unsupported exchange manifest.</td><td>Use the legacy <code>import</code> path for that source, or wait for a v8 adapter.</td></tr>
+                <tr><td><code>exchange must be one of kraken, bisq, manual</code></td><td>An unsupported exchange manifest.</td><td>Use the legacy <code>import</code> path for that source, or wait for a v8 adapter.</td></tr>
+                <tr><td><code>manual-event evidence file not found</code></td><td>An <code>events.csv</code> row names a file that is not in the account folder.</td><td>Fix the relative path. Evidence links that point nowhere are rejected.</td></tr>
+                <tr><td><code>receipt filename is missing…</code></td><td>A PDF under <code>receipts/</code> is not a Bisq SEPA receipt name.</td><td>Keep the original Bisq filename, or move unrelated PDFs out of the receipts folder.</td></tr>
               </tbody>
             </table>
           </div>
@@ -656,6 +683,13 @@ trades = ["trades.csv"]</pre>
               </div>
               <div class="body"><h4>Bank review</h4><p>Matched and unmatched fiat legs, with the source row kept.</p><span class="open">Open demo →</span></div>
             </a>
+            <a class="preview" href="../v8/exchange/index.html">
+              <div class="shot">
+                <div class="chrome"><i></i><i></i><i></i></div>
+                <div class="mini"><div class="list"><span></span><span></span><span></span><span></span></div><div class="donut"></div></div>
+              </div>
+              <div class="body"><h4>Exchange review</h4><p>Bisq trades, SEPA receipts and the bank rows that corroborate them.</p><span class="open">Open demo →</span></div>
+            </a>
             <a class="preview" href="../v8/2023/report.html">
               <div class="shot dark">
                 <div class="chrome"><i></i><i></i><i></i></div>
@@ -703,7 +737,8 @@ trades = ["trades.csv"]</pre>
             <table>
               <thead><tr><th>Area</th><th>Current behaviour</th><th>What to do</th></tr></thead>
               <tbody>
-                <tr><td><strong>Exchange folders</strong></td><td>Kraken only in v8 account manifests.</td><td>Use <code>utxoproof import</code> and the legacy report path for Coinbase, Binance or Bisq until an adapter lands.</td></tr>
+                <tr><td><strong>Exchange folders</strong></td><td>Kraken, Bisq and manual events in v8. Coinbase/Binance remain legacy imports.</td><td>Use <code>utxoproof import</code> and the legacy report path for Coinbase or Binance until an adapter lands.</td></tr>
+                <tr><td><strong>Bisq receipts</strong></td><td>Matching reads the deterministic PDF filename, not the PDF text.</td><td>Keep the original Bisq export filename. Unmatched receipts stay visible in red.</td></tr>
                 <tr><td><strong>Bank statements</strong></td><td>EUR only. Profiles are alias-driven and some shapes are best-effort.</td><td>Inspect the bank review for the first statement of each profile. Non-EUR rows without a rate abort rather than guess.</td></tr>
                 <tr><td><strong>Broker holdings</strong></td><td>Informational only; no Belgian stock tax.</td><td>Keep statements as evidence; do not treat the overview as a stock-tax report.</td></tr>
                 <tr><td><strong>Ownership</strong></td><td>Descriptors and derived scripts only; labels never own.</td><td>Export watch-only descriptors. Duplicate scripts across accounts are a hard error.</td></tr>

@@ -385,6 +385,16 @@ Realised gains per year plus remaining lot inventory (cost basis only).</p>
 
 {% macro overview_section(o, intro, show_heading=True) %}
 {{ intro_block("Portfolio overview", intro, show_heading) }}
+{% if o.alerts %}
+<div class="alert alert-warn">
+  <h3>Needs review</h3>
+  <ul>
+    {% for a in o.alerts %}
+    <li>{{ a.text }}{% if a.href %} — <a href="{{ a.href }}">{{ a.link }}</a>{% endif %}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
 <p>As of {{ o.as_of }} at {{ o.current_price_eur }} EUR/BTC ({{ o.price_note }}).
 Click an account to drill into its UTXOs, then a UTXO for provenance.</p>
 

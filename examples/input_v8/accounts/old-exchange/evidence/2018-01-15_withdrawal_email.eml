@@ -1,0 +1,19 @@
+From: Old Exchange <no-reply@old-exchange.example>
+To: Demo Owner <owner@example.invalid>
+Date: Mon, 15 Jan 2018 09:12:00 +0100
+Subject: Withdrawal confirmation - 0.25 BTC
+
+Hello Demo Owner,
+
+Your withdrawal has been broadcast.
+
+Reference       : OLD-WD-2018-01-15-0001
+Date            : 2018-01-15
+Amount          : 0.25 BTC
+Network fee     : 5.00 EUR
+Destination     : bc1qpux3z758ulsxg69eptaakukraanqwtdxe5yy4c
+Transaction ID  : 7777777777777777777777777777777777777777777777777777777777777777
+
+The transaction is now waiting for confirmations.
+
+This is a synthetic demo email. It contains no real personal data.

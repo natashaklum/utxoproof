@@ -31,7 +31,7 @@ class AccountError(ValueError):
 
 
 ACCOUNT_KINDS = ("wallet", "bank", "credit_card", "exchange", "broker")
-SUPPORTED_EXCHANGES = ("kraken",)
+SUPPORTED_EXCHANGES = ("kraken", "bisq", "manual")
 
 
 @dataclass
@@ -77,6 +77,10 @@ class Account:
     exchange: str = ""
     ledgers: tuple[Path, ...] = ()
     trades: tuple[Path, ...] = ()
+    transactions: tuple[Path, ...] = ()
+    receipts: tuple[Path, ...] = ()
+    events: tuple[Path, ...] = ()
+    crypto_direction: str = "base"
 
     # Broker accounts
     broker: str = ""
@@ -296,6 +300,43 @@ def _multi_paths(data: dict[str, Any], account_dir: Path, key: str) -> tuple[Pat
     return tuple(out)
 
 
+def _glob_paths(
+    data: dict[str, Any],
+    account_dir: Path,
+    key: str,
+    *,
+    default: str | None = None,
+    suffix: str = "",
+) -> tuple[Path, ...]:
+    """Resolve a file, directory or glob list relative to the account folder."""
+    raw = data.get(key, default)
+    if raw is None:
+        return ()
+    values = [str(raw)] if isinstance(raw, str) else [str(item) for item in raw]
+    found: list[Path] = []
+    for value in values:
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            path = account_dir / path
+        if path.is_file():
+            found.append(path)
+            continue
+        if path.is_dir():
+            found.extend(sorted(p for p in path.rglob(f"*{suffix}") if p.is_file()))
+            continue
+        found.extend(
+            sorted(
+                Path(p)
+                for p in glob.glob(str(path), recursive=True)
+                if Path(p).is_file() and (not suffix or Path(p).suffix.lower() == suffix)
+            )
+        )
+    unique: dict[str, Path] = {}
+    for path in found:
+        unique[str(path.resolve())] = path
+    return tuple(unique.values())
+
+
 def load_account(account_dir: str | Path, warnings: list[str] | None = None) -> Account:
     """Load one ``account.toml`` folder.
 
@@ -387,10 +428,36 @@ def load_account(account_dir: str | Path, warnings: list[str] | None = None) -> 
                 f"{manifest}: exchange must be one of {', '.join(SUPPORTED_EXCHANGES)}"
             )
         account.exchange = exchange
-        account.ledgers = _multi_paths(data, directory, "ledgers")
-        account.trades = _multi_paths(data, directory, "trades")
-        if not account.ledgers:
-            raise AccountError(f"{manifest}: exchange needs ledgers file(s)")
+        if exchange == "kraken":
+            account.ledgers = _multi_paths(data, directory, "ledgers")
+            account.trades = _multi_paths(data, directory, "trades")
+            if not account.ledgers:
+                raise AccountError(f"{manifest}: Kraken exchange needs a ledgers file")
+        elif exchange == "bisq":
+            # ``trade_history`` is the explicit name; ``trades`` is accepted so
+            # all exchange manifests share one vocabulary.
+            if "trade_history" in data and "trades" not in data:
+                data["trades"] = data["trade_history"]
+            account.trades = _multi_paths(data, directory, "trades")
+            account.transactions = _multi_paths(data, directory, "transactions")
+            account.receipts = _glob_paths(
+                data,
+                directory,
+                "receipts",
+                default="receipts/**/*.pdf" if (directory / "receipts").is_dir() else None,
+                suffix=".pdf",
+            )
+            account.crypto_direction = str(data.get("crypto_direction", "base")).lower()
+            if account.crypto_direction not in ("base", "btc"):
+                raise AccountError(f"{manifest}: crypto_direction must be base or btc")
+            if not (account.trades or account.transactions):
+                raise AccountError(
+                    f"{manifest}: Bisq exchange needs tradeHistory.csv and/or transactions.csv"
+                )
+        else:  # manual
+            account.events = _multi_paths(data, directory, "events")
+            if not account.events:
+                raise AccountError(f"{manifest}: manual exchange needs an events CSV")
     elif kind == "broker":
         account.broker = str(data.get("broker", "") or "")
         if not account.holdings:
@@ -469,7 +536,16 @@ def registry_summary(registry: Registry) -> list[str]:
         elif account.kind in ("bank", "credit_card"):
             detail = f"{account.profile}, {len(account.statements)} statement(s)"
         elif account.kind == "exchange":
-            detail = f"{account.exchange}, {len(account.ledgers)} ledger(s)"
+            if account.exchange == "kraken":
+                detail = f"{account.exchange}, {len(account.ledgers)} ledger(s)"
+            elif account.exchange == "bisq":
+                detail = (
+                    f"bisq, {len(account.trades)} trade file(s), "
+                    f"{len(account.transactions)} transfer file(s), "
+                    f"{len(account.receipts)} receipt(s)"
+                )
+            else:
+                detail = f"manual, {len(account.events)} event file(s)"
         elif account.kind == "broker":
             detail = f"{account.broker}, {len(account.holdings)} holding(s)"
         else:

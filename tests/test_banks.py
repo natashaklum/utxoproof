@@ -10,6 +10,7 @@ from utxoproof.banks import (
     BANK_PROFILES,
     BANK_TYPES,
     BankRow,
+    load_bank_rows_csv,
     parse_amount,
     parse_bank_csv,
     resolve_bank,
@@ -263,3 +264,22 @@ def test_fiat_leg_approximate_tie_stays_unmatched() -> None:
 
     matches, unmatched = match_fiat_legs([tx], [row("-19999.50"), row("-19999.75")])
     assert matches == [] and len(unmatched) == 2
+
+
+def test_load_bank_rows_csv_round_trip(tmp_path: Path) -> None:
+    path = tmp_path / "bank-rows.csv"
+    path.write_text(
+        "date,description,amount_eur,counterparty_iban,reference,"
+        "account_id,source_file,row_number\n"
+        "2023-02-27,BISQ SEPA,-308.50,BE71096123456769,BISQ-2023-0001,"
+        "kbc-checking,statements/2023/bisq.csv,2\n",
+        encoding="utf-8",
+    )
+    rows = load_bank_rows_csv(path)
+    assert len(rows) == 1
+    assert rows[0].date == datetime.date(2023, 2, 27)
+    assert rows[0].amount_eur == Decimal("-308.50")
+    assert rows[0].counterparty_iban == "BE71096123456769"
+    assert rows[0].reference == "BISQ-2023-0001"
+    assert rows[0].account_id == "kbc-checking"
+    assert rows[0].row_number == 2

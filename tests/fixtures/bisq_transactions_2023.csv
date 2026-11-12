@@ -1,0 +1,4 @@
+Date/Time,Trade ID,Details,Address,Transaction ID,Amount in BTC,Memo,Confirmations
+2023-07-01T10:30:00Z,B1,Received to Bisq wallet,bc1qbisqdeposit00000000000000000000000000,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,0.1,,10
+2023-08-02T09:00:00Z,B2,Sent to external wallet,bc1qwithdraw0000000000000000000000000000000,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,0.05,,5
+2023-08-03T09:00:00Z,,Internal wallet shuffle,bc1qinternal00000000000000000000000000000000,cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc,0.01,,1

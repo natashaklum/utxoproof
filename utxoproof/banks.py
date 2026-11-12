@@ -302,3 +302,43 @@ def parse_bank_csv(
             )
     rows.sort(key=lambda r: r.date.isoformat())
     return rows
+
+
+def load_bank_rows_csv(path: str | Path, account_id: str = "") -> list[BankRow]:
+    """Load the canonical ``imports/bank-rows.csv`` intermediate.
+
+    Report-only runs reuse the last bank import so exchange links do not
+    silently lose their bank corroboration when the banks step is skipped.
+    Optional columns are tolerated for files written by older versions.
+    """
+    path = Path(path)
+    rows: list[BankRow] = []
+    with open(path, newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        for index, row in enumerate(reader, start=2):
+            raw_date = (row.get("date") or "").strip()
+            raw_amount = (row.get("amount_eur") or "").strip()
+            try:
+                day = datetime.date.fromisoformat(raw_date)
+                amount = Decimal(raw_amount)
+            except (ValueError, ArithmeticError) as exc:
+                raise ValueError(f"{path}: row {index}: invalid date or amount") from exc
+            raw_row = (row.get("row_number") or "").strip()
+            try:
+                row_number = int(raw_row) if raw_row else 0
+            except ValueError:
+                row_number = 0
+            rows.append(
+                BankRow(
+                    date=day,
+                    description=(row.get("description") or "").strip(),
+                    amount_eur=amount,
+                    counterparty_iban=(row.get("counterparty_iban") or "").strip() or None,
+                    reference=(row.get("reference") or "").strip() or None,
+                    source_file=(row.get("source_file") or "").strip(),
+                    row_number=row_number,
+                    account_id=(row.get("account_id") or "").strip() or account_id,
+                )
+            )
+    rows.sort(key=lambda r: (r.date.isoformat(), r.source_file, r.row_number))
+    return rows
