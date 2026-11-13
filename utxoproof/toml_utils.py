@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 import tomllib
+from pathlib import Path
 from typing import Any
 
 _LINE_ERROR = re.compile(r"at line (\d+), column (\d+)")
@@ -79,3 +80,31 @@ def loads_lenient(text: str, source: str = "") -> tuple[dict[str, Any], list[str
             continue
         return data, warnings
     raise TomlError(f"{label}: invalid TOML: {first_error}")
+
+
+def summarize_toml_warnings(source: str, warnings: list[str]) -> list[str]:
+    """Collapse per-line TOML warnings into one summary plus a detail log.
+
+    The log is written next to the offending file as
+    ``WARNINGS_<filename>.log``. If it cannot be written (read-only input),
+    the detailed warnings are returned unchanged so nothing is lost. An
+    existing log is removed when the file parses cleanly, so a stale log
+    cannot contradict the current input.
+    """
+    if not source or source.startswith("<"):
+        return warnings
+    path = Path(source)
+    log_path = path.parent / f"WARNINGS_{path.name}.log"
+    if not warnings:
+        try:
+            log_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return []
+    try:
+        log_path.write_text("\n".join(warnings) + "\n", encoding="utf-8")
+    except OSError:
+        return warnings
+    return [
+        f"there were invalid lines in {source} - see {log_path} for details",
+    ]

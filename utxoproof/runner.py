@@ -833,6 +833,11 @@ def _report_year(options: RunOptions, registry: Registry, manual: Path | None) -
     return max(years) if years else None
 
 
+def _is_toml_warning_log(path: Path) -> bool:
+    """Warning logs sit beside manifests but are not tax evidence."""
+    return path.name.startswith("WARNINGS_") and path.name.endswith(".log")
+
+
 def _write_evidence(
     registry: Registry,
     db: sqlite3.Connection,
@@ -851,7 +856,11 @@ def _write_evidence(
     root = registry.root.absolute()
     # Account folders are the evidence inputs. The root utxoproof.toml can hold
     # RPC credentials and is deliberately not copied into the audit bundle.
-    sources = sorted(path for path in (registry.root / "accounts").rglob("*") if path.is_file())
+    sources = sorted(
+        path
+        for path in (registry.root / "accounts").rglob("*")
+        if path.is_file() and not _is_toml_warning_log(path)
+    )
     source_names = {
         str(path.resolve()): path.absolute().relative_to(root).as_posix() for path in sources
     }

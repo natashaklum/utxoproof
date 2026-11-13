@@ -141,7 +141,8 @@ Account kinds are `wallet` (on-chain), `bank`, `credit_card` (a liability),
 account id; add `id = "..."` to override it. Valid TOML comments, unknown keys
 and lists are fine. If a hand-edited manifest contains a stray legacy line (an
 old YAML-style `key: value`, a malformed list, a duplicate key), utxoproof
-skips that line with a `WARNING` and continues; required fields such as
+skips that line, prints one summary `WARNING` and writes the line details to
+`WARNINGS_<filename>.log` beside the manifest. Required fields such as
 `kind`, a descriptor, `profile` or `ledgers` still error normally. Minimal
 manifests:
 

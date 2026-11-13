@@ -56,8 +56,10 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   type-specific files stay in the account folder; no central account list.
   Generated DB/reports stay in `--data-dir`, never in `input/`.
 - Manifests/config use `utxoproof/toml_utils.py`: valid comments, unknown keys
-  and lists parse normally; stray invalid lines are skipped with `WARNING`
-  instead of aborting. Required fields still fail validation.
+  and lists parse normally; stray invalid lines are skipped instead of
+  aborting. The console gets one `WARNING` per file pointing at
+  `WARNINGS_<name>.log` beside the manifest, which holds the line details;
+  those logs stay out of evidence ZIPs. Required fields still fail validation.
 - Chain crypto (descriptor parsing, address/script derivation) goes through
   `utxoproof/descriptors.py` (embit); new vectors must be spec vectors,
   hand-verified before pinning. Exported descriptors (multisig included) are
@@ -82,7 +84,8 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   user labels. Labels are display metadata, never tags or ownership proofs;
   account and provenance pages show them.
 - Workflow: `utxoproof discover --input <tree> [--json] [--online]` validates
-  manifests/descriptors/collisions/parsers/backend without writing input;
+  manifests/descriptors/collisions/parsers/backend without writing a database
+  (invalid manifests leave a `WARNINGS_<name>.log` beside the file);
   `utxoproof run --input <tree> --data-dir <data> [--plan] [--only ...] [--year Y] [--offline]`
   runs registry+labels+sync/imports+reports+portfolio. Low-level
   commands remain for diagnosis (`portfolio --input`, `reconcile --input`,

@@ -23,7 +23,7 @@ from utxoproof.descriptors import (
     normalize_descriptor_pair,
 )
 from utxoproof.paths import data_dir
-from utxoproof.toml_utils import TomlError, loads_lenient
+from utxoproof.toml_utils import TomlError, loads_lenient, summarize_toml_warnings
 
 
 class AccountError(ValueError):
@@ -163,7 +163,7 @@ def _read_manifest(path: Path, warnings: list[str] | None = None) -> dict[str, A
     except TomlError as exc:
         raise AccountError(str(exc)) from exc
     if warnings is not None:
-        warnings.extend(parse_warnings)
+        warnings.extend(summarize_toml_warnings(str(path), parse_warnings))
     if not isinstance(data, dict):
         raise AccountError(f"{path}: account.toml must contain a table")
     return data

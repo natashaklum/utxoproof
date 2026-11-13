@@ -113,7 +113,10 @@ def test_config_ignores_stray_legacy_lines(tmp_path: Path) -> None:
     config = load_config(toml_path)
     assert config.taxpayer.reference == "BE-TEST"
     assert config.classifier.used_leverage is True
-    assert any("ignored invalid TOML line 3" in warning for warning in config.warnings)
+    assert any("there were invalid lines in" in warning for warning in config.warnings)
+    log = tmp_path / "WARNINGS_utxoproof.toml.log"
+    assert log.is_file()
+    assert "ignored invalid TOML line 3" in log.read_text(encoding="utf-8")
 
 
 def test_find_config_search_order(tmp_path: Path, monkeypatch) -> None:

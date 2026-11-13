@@ -162,8 +162,12 @@ def test_manifest_ignores_legacy_junk_lines(tmp_path: Path) -> None:
     registry = load_registry(root)
     assert registry.ok, registry.errors
     assert registry.get("kbc").tags == ()
-    assert any("ignored invalid TOML line 5" in warning for warning in registry.warnings)
-    assert any("ignored invalid TOML line 6" in warning for warning in registry.warnings)
+    assert any("there were invalid lines in" in warning for warning in registry.warnings)
+    log = folder / "WARNINGS_account.toml.log"
+    assert log.is_file()
+    details = log.read_text(encoding="utf-8")
+    assert "ignored invalid TOML line 5" in details
+    assert "ignored invalid TOML line 6" in details
 
 
 def test_manifest_with_broken_required_line_still_fails(tmp_path: Path) -> None:

@@ -12,7 +12,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from utxoproof.toml_utils import TomlError, loads_lenient
+from utxoproof.toml_utils import TomlError, loads_lenient, summarize_toml_warnings
 
 
 @dataclass
@@ -106,7 +106,8 @@ def load_config(path: str | Path | None = None) -> Config:
     if found is not None:
         try:
             raw = found.read_text(encoding="utf-8")
-            loaded, warnings = loads_lenient(raw, str(found))
+            loaded, parse_warnings = loads_lenient(raw, str(found))
+            warnings = summarize_toml_warnings(str(found), parse_warnings)
         except (OSError, UnicodeDecodeError) as exc:
             warnings.append(f"{found}: could not read config: {exc}")
             loaded = {}
