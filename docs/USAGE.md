@@ -169,6 +169,25 @@ fingerprint = "73c5da0a"
 purpose = 84
 ```
 
+`fingerprint` may be omitted when the source does not show one (the descriptor
+origin is then omitted). `script_type` (`pkh`, `sh-wpkh`, `wpkh`, `tr`) and
+`derivation` override the purpose-derived address type and origin path. That is
+how Bisq's nonstandard segwit keychain is expressed:
+
+```toml
+# accounts/bisq-wallet-legacy/account.toml
+kind = "wallet"
+xpub = "xpub..."              # Bisq Wallet Info -> BTC legacy watch key
+purpose = 44
+script_type = "pkh"
+
+# accounts/bisq-wallet-segwit/account.toml
+kind = "wallet"
+xpub = "zpub..."              # Bisq Wallet Info -> BTC segwit watch key
+script_type = "wpkh"
+derivation = "m/44'/0'/1'"    # Bisq segwit keychain, not BIP84
+```
+
 ```toml
 # accounts/kbc-checking/account.toml
 kind = "bank"
@@ -226,6 +245,27 @@ account's `receipts/` folder are parsed from their deterministic filename
 (date, counterparties, BTC amount, EUR/BTC price, market, reference) and matched
 to the trade and bank row; the PDF itself is evidence and is not text-mined.
 
+The CSVs only describe trade and transfer rows. To track the Bisq wallet's
+actual balance, unswept change and on-chain provenance, add its two BTC
+watch-only keychains as wallet accounts and name them in the exchange manifest:
+
+```toml
+# accounts/bisq/account.toml
+kind = "exchange"
+label = "Bisq"
+exchange = "bisq"
+trade_history = "tradeHistory.csv"
+transactions = "transactions.csv"
+wallet_accounts = ["bisq-wallet-legacy", "bisq-wallet-segwit"]
+```
+
+Legacy (`m/44'/0'/0'`, `script_type = "pkh"`) and segwit (`m/44'/0'/1'`,
+`script_type = "wpkh"`, explicit `derivation`) are separate descriptor sets, so
+they are separate account folders. The exchange review then shows each linked
+wallet's balance and marks transfer txids that were actually seen in that
+wallet. The BSQ keychain (`m/44'/142'/0'`) is not Bitcoin and must not be added
+as a BTC wallet.
+
 A manual exchange uses `events.csv` with `date,kind` (`BUY`, `SELL`, `DEPOSIT`,
 `WITHDRAWAL`) and optional `btc,eur_per_btc,fee_eur,refid,note,evidence,txid,
 address,kyc_status`. `evidence` is a semicolon-separated list of files relative
@@ -242,9 +282,10 @@ utxoproof discover --input ~/utxoproof-data/input --json
 ```
 
 `discover` parses every manifest/statement/label file, derives descriptors,
-rejects duplicate scripts/addresses across accounts, and never writes. Add
-`--online` to check the configured Electrum/Core backend. Then inspect the run
-plan and execute:
+rejects duplicate scripts/addresses across accounts, and never writes a
+database (invalid manifests leave a `WARNINGS_<file>.log` beside the manifest).
+Add `--online` to check the configured Electrum/Core backend. Then inspect the
+run plan and execute:
 
 ```bash
 utxoproof run --input ~/utxoproof-data/input --data-dir ~/utxoproof-data --plan

@@ -37,8 +37,10 @@ Implemented and covered by tests + live regtest runs: the v8 account workflow
 BIP329 labels, Electrum primary / Bitcoin Core optional sync, discovery and
 `utxoproof run`), exchange imports (Kraken ledgers + trades join incl.
 margin/rollover, Coinbase, Binance, Bisq, plus manual `events.csv` for dead
-exchanges), Bisq SEPA receipt matching, Belgian bank parsing and fiat-leg
-review with visible unmatched warnings, EUR price oracle, Belgian classifier
+exchanges), Bisq SEPA receipt matching and linked Bisq on-chain wallet
+tracking (legacy + segwit watch-only keychains), Belgian bank parsing and
+fiat-leg review with visible unmatched warnings, EUR price oracle, Belgian
+classifier
 with `utxoproof.toml`, HTML reports (tax, status, privacy, advisory,
 provenance/saga, bank review, exchange review, all-time) with evidence ZIPs,
 KYC propagation, all-parent provenance with persisted
@@ -112,8 +114,11 @@ configured Electrum server (or Core with `[chain] backend = "core"`), builds the
 tax report + evidence ZIP and the account/provenance dashboard (`--no-zip`
 skips the bundle). Exchange accounts (`kraken`, `bisq`, `manual`) also get
 `reports/exchange/` pages that link trades, SEPA receipts, bank rows and chain
-transactions; unresolved items stay red instead of being guessed.
-`examples/run.sh` is a thin environment-variable wrapper around it.
+transactions; unresolved items stay red instead of being guessed. A Bisq
+account can name `wallet_accounts` for its legacy and segwit watch-only
+keychains, so the review page shows the real on-chain balance and recognises
+transfer txids. `examples/run.sh` is a thin environment-variable wrapper around
+it.
 
 Offline CSV checks still work without an input tree:
 

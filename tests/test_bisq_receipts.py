@@ -151,6 +151,7 @@ def test_example_tree_loads_exchange_adapters() -> None:
     assert registry.ok, registry.errors
     bisq = registry.get("bisq")
     assert bisq.exchange == "bisq"
+    assert bisq.wallet_accounts == ("bisq-wallet-legacy", "bisq-wallet-segwit")
     assert len(bisq.trades) == 1
     assert len(bisq.transactions) == 1
     assert len(bisq.receipts) == 2

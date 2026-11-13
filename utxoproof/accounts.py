@@ -81,6 +81,7 @@ class Account:
     receipts: tuple[Path, ...] = ()
     events: tuple[Path, ...] = ()
     crypto_direction: str = "base"
+    wallet_accounts: tuple[str, ...] = ()
 
     # Broker accounts
     broker: str = ""
@@ -382,17 +383,17 @@ def load_account(account_dir: str | Path, warnings: list[str] | None = None) -> 
             account.descriptors = _descriptor_pair(data, directory, account.network)
         elif data.get("xpub"):
             xpub = str(data["xpub"])
-            fingerprint = str(data.get("fingerprint", ""))
-            if not fingerprint:
-                raise AccountError(f"{manifest}: xpub shorthand needs fingerprint")
-            built = build_descriptors(
-                xpub,
-                fingerprint,
-                int(data.get("purpose", 84)),
-                int(data.get("coin", 0)),
-                int(data.get("account", 0)),
-            )
+            fingerprint = str(data.get("fingerprint", "") or "")
             try:
+                built = build_descriptors(
+                    xpub,
+                    fingerprint,
+                    int(data.get("purpose", 84)),
+                    int(data.get("coin", 0)),
+                    int(data.get("account", 0)),
+                    script_type=str(data.get("script_type", "") or ""),
+                    derivation=str(data.get("derivation", "") or ""),
+                )
                 external, change = normalize_descriptor_pair(
                     built["external"], built["change"], network=account.network
                 )
@@ -428,6 +429,12 @@ def load_account(account_dir: str | Path, warnings: list[str] | None = None) -> 
                 f"{manifest}: exchange must be one of {', '.join(SUPPORTED_EXCHANGES)}"
             )
         account.exchange = exchange
+        raw_wallets = data.get("wallet_accounts", [])
+        if not isinstance(raw_wallets, list):
+            raise AccountError(f"{manifest}: wallet_accounts must be a list of account ids")
+        account.wallet_accounts = tuple(str(item).strip() for item in raw_wallets)
+        if any(not item for item in account.wallet_accounts):
+            raise AccountError(f"{manifest}: wallet_accounts contains an empty account id")
         if exchange == "kraken":
             account.ledgers = _multi_paths(data, directory, "ledgers")
             account.trades = _multi_paths(data, directory, "trades")
@@ -494,6 +501,35 @@ def load_registry(root: str | Path | None = None) -> Registry:
         accounts.append(account)
     if not accounts:
         errors.append(f"{base}: no valid accounts found under accounts/")
+    # Linked on-chain wallets: one wallet per exchange, and the target must be
+    # a wallet account. Keep this cross-account check here, where all manifests
+    # are known, instead of trying to resolve forward references while loading.
+    by_id = {account.id: account for account in accounts}
+    linked_owner: dict[str, str] = {}
+    for account in accounts:
+        if account.kind != "exchange":
+            continue
+        for wallet_id in account.wallet_accounts:
+            wallet = by_id.get(wallet_id)
+            if wallet is None:
+                errors.append(
+                    f"{account.id}: wallet_accounts references unknown account {wallet_id!r}"
+                )
+                continue
+            if wallet.kind != "wallet":
+                errors.append(
+                    f"{account.id}: wallet_accounts entry {wallet_id!r} is "
+                    f"{wallet.kind}, not a wallet"
+                )
+                continue
+            other = linked_owner.get(wallet_id)
+            if other is not None and other != account.id:
+                errors.append(
+                    f"wallet {wallet_id!r} is linked to both exchange accounts "
+                    f"{other!r} and {account.id!r}"
+                )
+                continue
+            linked_owner[wallet_id] = account.id
     # Global duplicate-script detection across every wallet account.
     script_owner: dict[str, str] = {}
     for account in accounts:
@@ -544,6 +580,8 @@ def registry_summary(registry: Registry) -> list[str]:
                     f"{len(account.transactions)} transfer file(s), "
                     f"{len(account.receipts)} receipt(s)"
                 )
+                if account.wallet_accounts:
+                    detail += f", {len(account.wallet_accounts)} linked wallet(s)"
             else:
                 detail = f"manual, {len(account.events)} event file(s)"
         elif account.kind == "broker":

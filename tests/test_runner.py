@@ -91,6 +91,10 @@ def test_offline_run_builds_account_site(tmp_path: Path) -> None:
     assert "BISQ-2023-0001" in bisq_html
     assert "20230227_ES7200495" in bisq_html
     assert "tier-exact" in bisq_html
+    assert "Linked on-chain wallets" in bisq_html
+    assert "Bisq BTC legacy" in bisq_html
+    assert "Bisq BTC segwit" in bisq_html
+    assert "bisq-wallet-segwit.html" in bisq_html
     bank_html = (data / "reports" / "bank" / "bank.html").read_text(encoding="utf-8")
     assert "alert-warn" in bank_html
     assert "row-unmatched" in bank_html
@@ -116,9 +120,9 @@ def test_offline_run_builds_account_site(tmp_path: Path) -> None:
     labels = db.execute("SELECT COUNT(*) FROM labels").fetchone()[0]
     scripts = db.execute("SELECT COUNT(*) FROM account_scripts").fetchone()[0]
     db.close()
-    assert accounts == 9
+    assert accounts == 11
     assert labels == 4
-    assert scripts == 120  # 3 wallets x 2 chains x 20 gap
+    assert scripts == 200  # 5 wallets x 2 chains x 20 gap
     after = {
         path.relative_to(EXAMPLE): path.read_bytes()
         for path in EXAMPLE.rglob("*")

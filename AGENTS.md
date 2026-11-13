@@ -55,6 +55,11 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   `wallet`, `bank`, `credit_card`, `exchange`, `broker`. All metadata and
   type-specific files stay in the account folder; no central account list.
   Generated DB/reports stay in `--data-dir`, never in `input/`.
+- Exchanges can link watch-only wallets with `wallet_accounts = [...]` in the
+  exchange manifest; the exchange page then shows each linked wallet's balance
+  and recognises transfer txids. Bisq's integrated BTC wallet is two wallet
+  accounts (legacy `pkh` at `44'/0'/0'`, segwit `wpkh` at `44'/0'/1'`) because
+  each is its own descriptor set. The BSQ keychain (`44'/142'/0'`) is not BTC.
 - Manifests/config use `utxoproof/toml_utils.py`: valid comments, unknown keys
   and lists parse normally; stray invalid lines are skipped instead of
   aborting. The console gets one `WARNING` per file pointing at
@@ -63,7 +68,9 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
 - Chain crypto (descriptor parsing, address/script derivation) goes through
   `utxoproof/descriptors.py` (embit); new vectors must be spec vectors,
   hand-verified before pinning. Exported descriptors (multisig included) are
-  canonical; xpub shorthand is accepted for single-sig. Ownership is per output:
+  canonical; xpub shorthand is accepted for single-sig and takes optional
+  `script_type`/`derivation` overrides plus an optional fingerprint (Bisq's
+  Wallet Info often omits one). Ownership is per output:
   `accounts.persist_registry` fills `account_scripts`, and
   `tx_outputs.account_id` drives portfolio/advisory attribution. Address labels
   never establish ownership. Overlapping scripts across accounts are hard errors.

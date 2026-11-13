@@ -26,6 +26,14 @@ BIP84_ZPUB = (
     "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCTo"
     "UG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs"
 )
+BISQ_LEGACY_XPUB = (
+    "xpub6CDEarkRoiwWPj3n3gYygGwgoGchxYg3g6Zs5L2nB4B6wdojzcWCKKHMu9XuY1GyYygRfrVembjAko1T5x"
+    "Tsxj7ecKXxEPzDxx7nCK8Dxtx"
+)
+BISQ_SEGWIT_ZPUB = (
+    "zpub6qsmCC6G762U9EBWshJ26LaGg2LS68YP9gfsbJ1jcwEP2MShvyXgw19BLkYn9D5Qs45UmJUfAKMSHkVp"
+    "fiDVcMcB7q2oALJ3nJUnbjmfUE8"
+)
 FINGERPRINT = "73c5da0a"
 
 
@@ -67,6 +75,106 @@ def test_load_wallet_account_and_derive_scripts(tmp_path: Path) -> None:
     accounts, fiat, _tags = portfolio_config(registry)
     assert accounts[0].wallet == "ledger-main"
     assert fiat == []
+
+
+def test_wallet_xpub_shorthand_accepts_bisq_keychains(tmp_path: Path) -> None:
+    root = _input_tree(tmp_path)
+    legacy = root / "accounts" / "bisq-legacy"
+    legacy.mkdir(parents=True)
+    (legacy / "account.toml").write_text(
+        'kind = "wallet"\n'
+        'label = "Bisq legacy"\n'
+        "gap_limit = 2\n"
+        f'xpub = "{BISQ_LEGACY_XPUB}"\n'
+        "purpose = 44\n"
+        'script_type = "pkh"\n',
+        encoding="utf-8",
+    )
+    segwit = root / "accounts" / "bisq-segwit"
+    segwit.mkdir(parents=True)
+    (segwit / "account.toml").write_text(
+        'kind = "wallet"\n'
+        'label = "Bisq segwit"\n'
+        "gap_limit = 2\n"
+        f'xpub = "{BISQ_SEGWIT_ZPUB}"\n'
+        'script_type = "wpkh"\n'
+        "derivation = \"m/44'/0'/1'\"\n",
+        encoding="utf-8",
+    )
+    registry = load_registry(root)
+    assert registry.ok, registry.errors
+    legacy_account = registry.get("bisq-legacy")
+    assert legacy_account.descriptors["external"].startswith("pkh(")
+    assert legacy_account.scripts()[0][1][0] in ("1", "m", "n")
+    segwit_account = registry.get("bisq-segwit")
+    assert segwit_account.descriptors["external"].startswith("wpkh(")
+    assert segwit_account.scripts()[0][1].startswith("bc1")
+
+
+def test_exchange_wallet_accounts_must_be_wallets(tmp_path: Path) -> None:
+    root = _input_tree(tmp_path)
+    _wallet(root)
+    for exchange_id, target in (("manual-a", "ledger-main"), ("manual-b", "missing")):
+        folder = root / "accounts" / exchange_id
+        folder.mkdir(parents=True)
+        (folder / "events.csv").write_text("date,kind,btc\n", encoding="utf-8")
+        (folder / "account.toml").write_text(
+            'kind = "exchange"\n'
+            f'label = "{exchange_id}"\n'
+            'exchange = "manual"\n'
+            'events = "events.csv"\n'
+            f'wallet_accounts = ["{target}"]\n',
+            encoding="utf-8",
+        )
+    registry = load_registry(root)
+    assert not registry.ok
+    assert any("unknown account 'missing'" in error for error in registry.errors)
+
+
+def test_wallet_cannot_be_linked_to_two_exchanges(tmp_path: Path) -> None:
+    root = _input_tree(tmp_path)
+    _wallet(root)
+    for exchange_id in ("manual-a", "manual-b"):
+        folder = root / "accounts" / exchange_id
+        folder.mkdir(parents=True)
+        (folder / "events.csv").write_text("date,kind,btc\n", encoding="utf-8")
+        (folder / "account.toml").write_text(
+            'kind = "exchange"\n'
+            f'label = "{exchange_id}"\n'
+            'exchange = "manual"\n'
+            'events = "events.csv"\n'
+            'wallet_accounts = ["ledger-main"]\n',
+            encoding="utf-8",
+        )
+    registry = load_registry(root)
+    assert not registry.ok
+    assert any("linked to both exchange accounts" in error for error in registry.errors)
+
+
+def test_wallet_accounts_reject_non_wallet(tmp_path: Path) -> None:
+    root = _input_tree(tmp_path)
+    bank = root / "accounts" / "bank"
+    bank.mkdir(parents=True)
+    (bank / "statements").mkdir()
+    (bank / "statements" / "jan.csv").write_text("date,amount\n", encoding="utf-8")
+    (bank / "account.toml").write_text(
+        'kind = "bank"\nlabel = "Bank"\nprofile = "kbc-bankaccount"\n',
+        encoding="utf-8",
+    )
+    folder = root / "accounts" / "manual"
+    folder.mkdir(parents=True)
+    (folder / "events.csv").write_text("date,kind,btc\n", encoding="utf-8")
+    (folder / "account.toml").write_text(
+        'kind = "exchange"\n'
+        'label = "Manual"\n'
+        'exchange = "manual"\n'
+        'events = "events.csv"\n'
+        'wallet_accounts = ["bank"]\n',
+        encoding="utf-8",
+    )
+    registry = load_registry(root)
+    assert not registry.ok
+    assert any("is bank, not a wallet" in error for error in registry.errors)
 
 
 def test_multipath_descriptor_file_is_split(tmp_path: Path) -> None:

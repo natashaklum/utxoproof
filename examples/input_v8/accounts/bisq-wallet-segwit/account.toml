@@ -1,0 +1,10 @@
+kind = "wallet"
+label = "Bisq BTC segwit"
+network = "mainnet"
+gap_limit = 20
+# Bisq segwit is native P2WPKH on the nonstandard keychain 44'/0'/1'.
+# The zpub prefix and the explicit path are both taken from Wallet Info.
+xpub = "zpub6qsmCC6G762U9EBWshJ26LaGg2LS68YP9gfsbJ1jcwEP2MShvyXgw19BLkYn9D5Qs45UmJUfAKMSHkVpfiDVcMcB7q2oALJ3nJUnbjmfUE8"
+script_type = "wpkh"
+derivation = "m/44'/0'/1'"
+tags = ["exchange", "non-kyc"]

@@ -169,6 +169,7 @@
                 <tr><td><strong>BIP329 labels</strong></td><td><code>accounts/&lt;id&gt;/labels.jsonl</code></td><td><span class="pill hot">wallet</span></td><td>Labels are display metadata. They never create ownership, tags or tax treatment.</td></tr>
                 <tr><td><strong>Kraken ledgers + trades</strong></td><td><code>ledgers.csv</code> and <code>trades.csv</code></td><td><span class="pill">exchange</span></td><td>Keep both files and all years.</td></tr>
                 <tr><td><strong>Bisq trade history + transfers</strong></td><td><code>tradeHistory.csv</code> and <code>transactions.csv</code></td><td><span class="pill">exchange</span></td><td>Non-KYC P2P. EUR and BTC-quoted crypto markets are supported; keep the SEPA receipt PDFs too.</td></tr>
+                <tr><td><strong>Bisq BTC watch keys</strong></td><td>Two wallet folders; link via <code>wallet_accounts</code></td><td><span class="pill hot">wallet</span></td><td>Legacy <code>44'/0'/0'</code> (<code>pkh</code>) and segwit <code>44'/0'/1'</code> (<code>wpkh</code>) are separate descriptor sets. The BSQ keychain is not Bitcoin.</td></tr>
                 <tr><td><strong>Old exchange with no CSV</strong></td><td><code>events.csv</code> + <code>evidence/</code></td><td><span class="pill">exchange</span></td><td>Hand-enter each buy/sell/deposit/withdrawal. List the email or PDF that proves it.</td></tr>
                 <tr><td><strong>Bank statement CSV</strong></td><td><code>accounts/&lt;id&gt;/statements/**/*.csv</code></td><td><span class="pill">bank</span></td><td>EUR only. A profile parser is required; a balance alone is not a bank account.</td></tr>
                 <tr><td><strong>Credit-card statement</strong></td><td><code>accounts/&lt;id&gt;/statements/**/*.csv</code></td><td><span class="pill">credit_card</span></td><td>A card is a liability. Put the owed balance in as a negative amount.</td></tr>
@@ -285,7 +286,7 @@ communal_surcharge_rate = 0.07  <span class="c"># Brussels 0.0587 · Ghent 0.076
           <p class="lede">Each folder under <code>input/accounts/</code> is one account. The folder name is the default id; the manifest inside is the source of truth. There is no central account list to keep in sync.</p>
 
           <div class="grid-3">
-            <div class="card"><div class="icon"><svg aria-hidden="true"><use href="#i-wallet"></use></svg></div><h3>wallet</h3><p>On-chain ownership. Needs a descriptor pair or an xpub shorthand plus fingerprint.</p></div>
+            <div class="card"><div class="icon"><svg aria-hidden="true"><use href="#i-wallet"></use></svg></div><h3>wallet</h3><p>On-chain ownership. Needs a descriptor pair or an xpub shorthand (fingerprint optional).</p></div>
             <div class="card teal"><div class="icon"><svg aria-hidden="true"><use href="#i-bank"></use></svg></div><h3>bank</h3><p>EUR statements and an optional hand-asserted balance. Statement rows are evidence, never tax pool input.</p></div>
             <div class="card red"><div class="icon"><svg aria-hidden="true"><use href="#i-card"></use></svg></div><h3>credit_card</h3><p>Same statement shape as a bank, but treated as a negative liability in the overview.</p></div>
           </div>
@@ -316,7 +317,7 @@ tags = ["cold-storage"]</pre>
             </div>
             <div class="card">
               <h4>Wallet — xpub shorthand</h4>
-              <p>Fine for simple single-sig. The fingerprint is required; <code>purpose</code> defaults to 84 (BIP84).</p>
+              <p>Fine for simple single-sig. The fingerprint is optional; <code>purpose</code> defaults to 84 (BIP84). Override <code>script_type</code> or <code>derivation</code> for nonstandard keychains.</p>
               <pre><span class="c"># accounts/sparrow-savings/account.toml</span>
 kind = "wallet"
 label = "Sparrow savings"
@@ -370,7 +371,7 @@ value_eur = "2125.00"</pre>
             <div>
               <h4>What to export</h4>
               <ul>
-                <li><strong>Single-sig:</strong> the account xpub plus its master fingerprint and purpose, or the full descriptor.</li>
+                <li><strong>Single-sig:</strong> the account xpub plus its master fingerprint and purpose, or the full descriptor. The fingerprint is optional; nonstandard keychains can set <code>script_type</code> and <code>derivation</code>.</li>
                 <li><strong>Multisig:</strong> both receive and change descriptors, including all cosigner xpubs and the checksum.</li>
                 <li><strong>Multipath:</strong> a single descriptor pair using <code>&lt;0;1&gt;</code> is accepted; explicit receive/change files are clearer.</li>
                 <li><strong>One folder per descriptor set.</strong> Two BIP84 accounts from the same seed are two wallets, not one.</li>
@@ -466,6 +467,25 @@ trade_history = "tradeHistory.csv"
 transactions = "transactions.csv"
 receipts = "receipts/*.pdf"</pre>
           <p>SEPA receipt PDFs are matched to trades and bank rows by filename (date, BTC amount, EUR/BTC price, market). The PDF stays evidence; no text extraction is attempted. Every trade, transfer and receipt appears on the exchange review page, with the bank row and chain transaction it links to. Unmatched items are red and listed in a review panel — never guessed.</p>
+          <h4>Track the Bisq on-chain wallet too</h4>
+          <p>Trade and transfer CSVs do not prove what the Bisq wallet still holds, which change is yours, or where a withdrawal went. In Bisq, open <strong>Account → Wallet Info</strong> and copy the two BTC watch keys and keychain paths. Add them as two separate <code>wallet</code> accounts, then name both in the exchange manifest. Legacy is <code>m/44'/0'/0'</code> with <code>script_type = "pkh"</code>; segwit is <code>m/44'/0'/1'</code> with <code>script_type = "wpkh"</code> and an explicit <code>derivation</code>. Bisq may not show a master fingerprint, so the shorthand accepts an omitted fingerprint. The BSQ keychain is not Bitcoin.</p>
+          <pre><span class="c"># accounts/bisq-wallet-legacy/account.toml</span>
+kind = "wallet"
+label = "Bisq BTC legacy"
+xpub = "xpub..."
+purpose = 44
+script_type = "pkh"
+
+<span class="c"># accounts/bisq-wallet-segwit/account.toml</span>
+kind = "wallet"
+label = "Bisq BTC segwit"
+xpub = "zpub..."
+script_type = "wpkh"
+derivation = "m/44'/0'/1'"
+
+<span class="c"># accounts/bisq/account.toml</span>
+wallet_accounts = ["bisq-wallet-legacy", "bisq-wallet-segwit"]</pre>
+          <p>The exchange review then shows each linked wallet's balance and marks transfer rows whose txid was actually seen in that wallet. Sync the wallet accounts through Electrum or Core like any other watch-only wallet; the descriptors still establish ownership, never the exchange labels.</p>
 
           <h3>An old exchange with no CSV</h3>
           <p>When the exchange is gone and only confirmation emails remain, hand-write <code>events.csv</code>. Each row is one BUY, SELL, DEPOSIT or WITHDRAWAL. The <code>evidence</code> column is a semicolon-separated list of files relative to the account folder; the runner checks that every file exists and includes the account folder in the evidence ZIP.</p>
@@ -533,7 +553,7 @@ date,kind,btc,eur_per_btc,fee_eur,refid,note,evidence,txid,address,kyc_status
                 <tr><td><code>derive the same script</code></td><td>The same xpub or descriptor is in two account folders.</td><td>Remove the duplicate account. Never let two folders claim the same output.</td></tr>
                 <tr><td><code>descriptor/derivation error</code></td><td>The descriptor is truncated, has a bad checksum, or the network is wrong.</td><td>Re-export from the wallet. Do not hand-edit the checksum.</td></tr>
                 <tr><td><code>no statement CSV files matched</code></td><td>The bank/card folder has no CSV under its statement pattern.</td><td>Add the statements or set <code>statements</code> explicitly.</td></tr>
-                <tr><td><code>wallet needs descriptors or xpub</code></td><td>The wallet manifest has no ownership source.</td><td>Export the watch-only descriptor or add <code>xpub</code> + <code>fingerprint</code>.</td></tr>
+                <tr><td><code>wallet needs descriptors or xpub</code></td><td>The wallet manifest has no ownership source.</td><td>Export the watch-only descriptor or add <code>xpub</code> (fingerprint optional).</td></tr>
                 <tr><td><code>exchange must be one of kraken, bisq, manual</code></td><td>An unsupported exchange manifest.</td><td>Use the legacy <code>import</code> path for that source, or wait for a v8 adapter.</td></tr>
                 <tr><td><code>manual-event evidence file not found</code></td><td>An <code>events.csv</code> row names a file that is not in the account folder.</td><td>Fix the relative path. Evidence links that point nowhere are rejected.</td></tr>
                 <tr><td><code>receipt filename is missing…</code></td><td>A PDF under <code>receipts/</code> is not a Bisq SEPA receipt name.</td><td>Keep the original Bisq filename, or move unrelated PDFs out of the receipts folder.</td></tr>
@@ -765,14 +785,15 @@ date,kind,btc,eur_per_btc,fee_eur,refid,note,evidence,txid,address,kyc_status
                 <tr><td><code>missing account.toml</code></td><td>A folder exists but is not an account.</td><td>Add the manifest or move the folder out of <code>accounts/</code>.</td></tr>
                 <tr><td><code>there were invalid lines in</code></td><td>A stray legacy/YAML line, duplicate key, or malformed optional list.</td><td>Open the named <code>WARNINGS_&lt;file&gt;.log</code> beside the manifest for the exact lines, then comment them out or leave them: utxoproof skips them. Required fields still error.</td></tr>
                 <tr><td><code>no statement CSV files matched</code></td><td>The bank/card folder has no CSV under the pattern.</td><td>Add statements or set <code>statements</code> explicitly; a bank folder without statements is invalid.</td></tr>
-                <tr><td><code>wallet needs descriptors or xpub</code></td><td>No ownership source in the wallet manifest.</td><td>Export a watch-only descriptor, or add <code>xpub</code> + <code>fingerprint</code> + <code>purpose</code>.</td></tr>
+                <tr><td><code>wallet needs descriptors or xpub</code></td><td>No ownership source in the wallet manifest.</td><td>Export a watch-only descriptor, or add <code>xpub</code> + <code>purpose</code> (fingerprint optional).</td></tr>
                 <tr><td><code>derive the same script</code></td><td>The same wallet is in two account folders.</td><td>Remove the duplicate. One output can have only one owner.</td></tr>
                 <tr><td>Zero UTXOs after sync</td><td>Wrong network, wrong descriptor, server not reachable, or history missed.</td><td>Run <code>discover --online</code>, check <code>network</code>, then <code>run --force-rescan</code>.</td></tr>
                 <tr><td>Reconcile shows a gap</td><td>Stale DB, missed spend, wrong server, or descriptor mismatch.</td><td>Rerun sync, then <code>--force-rescan</code>; inspect the account descriptor and server network.</td></tr>
                 <tr><td>Labels do not appear</td><td>Wrong file name, unsupported type, or account not imported.</td><td>Use <code>labels.jsonl</code> or set <code>labels_file</code>; remember labels are display only.</td></tr>
                 <tr><td>Bank rows do not change tax</td><td>By design: bank rows are evidence, not pool input.</td><td>Use exchange trades or a manual CSV for cost-basis flows.</td></tr>
                 <tr><td>Tax report has shortfalls</td><td>Missing buys or an opening position outside the imported history.</td><td>Run <code>utxoproof check</code>, find the gap, add the source. Never fabricate a buy to fill the pool.</td></tr>
-                <tr><td>Non-Kraken exchange fails</td><td>v8 exchange folders are Kraken-only.</td><td>Use <code>utxoproof import --type ...</code> and the legacy report path for now.</td></tr>
+                <tr><td>Bisq linked wallet stays at zero</td><td>The wallet account is not synced, uses the wrong keychain, or the descriptor origin/network is wrong.</td><td>Run <code>discover --online</code>; check legacy is <code>44'/0'/0'</code> + <code>pkh</code> and segwit is <code>44'/0'/1'</code> + <code>wpkh</code>. Never use the BSQ keychain.</td></tr>
+                <tr><td>Coinbase or Binance export fails</td><td>Those sources remain legacy imports, not v8 exchange adapters.</td><td>Use <code>utxoproof import --type ...</code> and the legacy report path.</td></tr>
                 <tr><td>Pages demo is stale</td><td>The workflow did not run or Pages is not set to GitHub Actions.</td><td>Actions → “Demo reports” → re-run; check Pages source is GitHub Actions.</td></tr>
               </tbody>
             </table>

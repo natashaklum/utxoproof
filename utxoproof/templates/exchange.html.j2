@@ -56,6 +56,26 @@
   </div>
 </div>
 
+{% if wallets %}
+<h2>Linked on-chain wallets</h2>
+<p>These watch-only wallets are derived from the exchange's own keys. They show what actually arrived, what is still held, and which transfer rows are recognised on-chain.</p>
+<div class="metric-grid">
+  {% for w in wallets %}
+  <div class="metric">
+    <span class="metric-label">{{ w.label }}</span>
+    <strong class="metric-value">{{ w.btc }} BTC</strong>
+    <span class="metric-note">{{ w.eur }} EUR · {{ w.utxos }} UTXO{% if w.utxos != 1 %}s{% endif %} · {{ w.network }} · <a href="{{ w.href }}">open account</a></span>
+  </div>
+  {% endfor %}
+</div>
+{% if not onchain_utxos %}
+<div class="alert alert-warn">
+  <h3>No on-chain UTXOs found for the linked wallet(s) yet</h3>
+  <p>Sync the wallet accounts against Electrum (or Core) and rerun. The trade and transfer CSVs remain visible, but balances and on-chain provenance need the watched descriptors.</p>
+</div>
+{% endif %}
+{% endif %}
+
 <h2>Trades</h2>
 {% if trades %}
 <div class="table-wrap"><table>
@@ -85,9 +105,9 @@
 <h2>Transfers</h2>
 {% if transfers %}
 <div class="table-wrap"><table>
-  <tr><th>Date</th><th>Kind</th><th>BTC</th><th>Transaction ID</th><th>Address</th><th>Details</th><th>Evidence</th><th>Source</th></tr>
+  <tr><th>Date</th><th>Kind</th><th>BTC</th><th>Transaction ID</th><th>Address</th><th>Details</th><th>Evidence</th><th>Source</th>{% if wallets %}<th>Linked wallet</th>{% endif %}</tr>
   {% for t in transfers %}
-  <tr{% if t.txid == "—" %} class="row-unmatched"{% endif %}><td>{{ t.date }}</td><td>{{ t.kind }}</td><td>{{ t.btc }}</td><td>{% if t.chain_href %}<a href="{{ t.chain_href }}"><code>{{ t.txid }}</code></a>{% elif t.txid != "—" %}<code>{{ t.txid }}</code>{% else %}<span class="missing">missing</span>{% endif %}</td><td><code>{{ t.address }}</code></td><td>{{ t.details }}</td><td>{{ t.evidence }}</td><td><code>{{ t.source }}</code></td></tr>
+  <tr{% if t.txid == "—" %} class="row-unmatched"{% endif %}><td>{{ t.date }}</td><td>{{ t.kind }}</td><td>{{ t.btc }}</td><td>{% if t.chain_href %}<a href="{{ t.chain_href }}"><code>{{ t.txid }}</code></a>{% elif t.txid != "—" %}<code>{{ t.txid }}</code>{% else %}<span class="missing">missing</span>{% endif %}</td><td><code>{{ t.address }}</code></td><td>{{ t.details }}</td><td>{{ t.evidence }}</td><td><code>{{ t.source }}</code></td>{% if wallets %}<td>{% if t.wallet_href %}<a href="{{ t.wallet_href }}">{{ t.wallet_label }}</a>{% elif t.wallet_label %}{{ t.wallet_label }}{% elif t.txid != "—" %}<span class="missing">not seen in linked wallet</span>{% else %}—{% endif %}</td>{% endif %}</tr>
   {% endfor %}
 </table></div>
 {% else %}

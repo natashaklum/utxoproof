@@ -31,6 +31,6 @@ def test_run_sh_is_thin_v8_wrapper(tmp_path: Path) -> None:
         timeout=300,
     )
     assert proc.returncode == 0, proc.stderr[-3000:]
-    assert "accounts: 9" in proc.stdout
+    assert "accounts: 11" in proc.stdout
     assert (tmp_path / "data" / "reports" / "2023" / "report.html").is_file()
     assert (tmp_path / "data" / "reports" / "overview" / "overview.html").is_file()

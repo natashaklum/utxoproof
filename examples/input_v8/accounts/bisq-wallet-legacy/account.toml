@@ -1,0 +1,10 @@
+kind = "wallet"
+label = "Bisq BTC legacy"
+network = "mainnet"
+gap_limit = 20
+# Bisq Wallet Info -> watch key + HD keychain path (legacy is 44'/0'/0').
+# Bisq may not display a master fingerprint; the origin is then omitted.
+xpub = "xpub6CDEarkRoiwWPj3n3gYygGwgoGchxYg3g6Zs5L2nB4B6wdojzcWCKKHMu9XuY1GyYygRfrVembjAko1T5xTsxj7ecKXxEPzDxx7nCK8Dxtx"
+purpose = 44
+script_type = "pkh"
+tags = ["exchange", "non-kyc"]

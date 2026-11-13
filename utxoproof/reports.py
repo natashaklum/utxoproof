@@ -703,7 +703,7 @@ def _transfer_for_trade(trade: ExchangeTx, transfers: list[ExchangeTx]) -> Excha
 
 
 def write_exchange_pages(
-    accounts: list[dict[str, str]],
+    accounts: list[dict[str, object]],
     transactions: list[ExchangeTx],
     receipts: list[BisqReceipt],
     bank_matches: list[FiatMatch],
@@ -741,6 +741,24 @@ def write_exchange_pages(
     receipt_total = 0
     for account in accounts:
         account_id = str(account.get("id", ""))
+        account_label = str(account.get("label", account_id))
+        account_path = str(account.get("path", "") or "")
+        wallets = account.get("wallets")
+        if not isinstance(wallets, list):
+            wallets = []
+        wallet_labels = {
+            str(wallet.get("id", "")): str(wallet.get("label", ""))
+            for wallet in wallets
+            if isinstance(wallet, dict)
+        }
+        wallet_hrefs = {
+            str(wallet.get("id", "")): str(wallet.get("href", ""))
+            for wallet in wallets
+            if isinstance(wallet, dict)
+        }
+        wallet_txids = account.get("wallet_txids")
+        if not isinstance(wallet_txids, dict):
+            wallet_txids = {}
         page_target = out / f"{account_id}.html"
         account_txs = [tx for tx in transactions if tx.account_id == account_id]
         trades = [tx for tx in account_txs if tx.kind in ("BUY", "SELL")]
@@ -878,6 +896,15 @@ def write_exchange_pages(
         transfer_rows = []
         for transfer in transfers:
             chain_href = _provenance_href(transfer.txid, provenance_dir, page_target)
+            owners = wallet_txids.get(transfer.txid, ())
+            if not isinstance(owners, (tuple, list)):
+                owners = ()
+            owner_labels = [wallet_labels.get(str(owner), "") for owner in owners]
+            owner_labels = [label for label in owner_labels if label]
+            wallet_label = ", ".join(owner_labels)
+            wallet_href = ""
+            if len(owners) == 1:
+                wallet_href = wallet_hrefs.get(str(owners[0]), "")
             if not transfer.txid:
                 review.append(
                     {
@@ -889,11 +916,23 @@ def write_exchange_pages(
                         "detail": "no transaction id; link this transfer to a chain tx manually",
                     }
                 )
+            elif wallets and not owner_labels:
+                review.append(
+                    {
+                        "level": "warn",
+                        "item": (
+                            f"{transfer.kind.title()} {transfer.date.isoformat()} "
+                            f"{transfer.btc} BTC"
+                        ),
+                        "detail": (
+                            "transaction id not found in the linked on-chain wallet(s); "
+                            "sync the wallet or check the txid"
+                        ),
+                    }
+                )
             if transfer.evidence:
                 missing = [
-                    name
-                    for name in transfer.evidence
-                    if not (Path(account.get("path", "")) / name).is_file()
+                    name for name in transfer.evidence if not (Path(account_path) / name).is_file()
                 ]
                 if missing:  # pragma: no cover - parser already validates this
                     review.append(
@@ -922,19 +961,24 @@ def write_exchange_pages(
                     "evidence": ";".join(transfer.evidence) or "—",
                     "chain_href": chain_href,
                     "source": transfer.source_evidence,
+                    "wallet_label": wallet_label,
+                    "wallet_href": wallet_href,
                 }
             )
 
         fiat_trades = [row for row in trade_rows if row["has_fiat_leg"]]
         matched_bank = sum(1 for row in fiat_trades if row["bank_tier"] != "unresolved")
         matched_receipts = sum(1 for row in receipt_rows if row["tier"] in ("exact", "approximate"))
+        onchain_utxos = sum(int(wallet.get("utxos", 0)) for wallet in wallets)
         context = {
             "id": account_id,
-            "label": account.get("label", account_id),
+            "label": account_label,
             "exchange": account.get("exchange", ""),
             "trades": trade_rows,
             "transfers": transfer_rows,
             "receipts": receipt_rows,
+            "wallets": wallets,
+            "onchain_utxos": onchain_utxos,
             "review": review,
             "warnings": warnings,
             "fiat_trades": len(fiat_trades),
@@ -960,7 +1004,7 @@ def write_exchange_pages(
         account_contexts.append(
             {
                 "id": account_id,
-                "label": account.get("label", account_id),
+                "label": account_label,
                 "exchange": account.get("exchange", ""),
                 "href": page_target.name,
                 "trades": len(trade_rows),
@@ -969,6 +1013,8 @@ def write_exchange_pages(
                 "matched_receipts": matched_receipts,
                 "unmatched": len(review),
                 "errors": sum(1 for item in review if item["level"] == "error"),
+                "wallets": len(wallets),
+                "onchain_btc": f"{sum(Decimal(str(w.get('btc', 0))) for w in wallets):.8f}",
             }
         )
 

@@ -17,6 +17,16 @@ BIP32_M0H_XPUB = (
     "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFU"
     "HCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw"
 )
+# Same BIP32 vector at Bisq's two BTC keychains. Bisq segwit is native P2WPKH
+# on m/44'/0'/1', so a zpub prefix alone is not enough to describe it.
+BISQ_LEGACY_XPUB = (
+    "xpub6CDEarkRoiwWPj3n3gYygGwgoGchxYg3g6Zs5L2nB4B6wdojzcWCKKHMu9XuY1GyYygRfrVembjAko1T5x"
+    "Tsxj7ecKXxEPzDxx7nCK8Dxtx"
+)
+BISQ_SEGWIT_ZPUB = (
+    "zpub6qsmCC6G762U9EBWshJ26LaGg2LS68YP9gfsbJ1jcwEP2MShvyXgw19BLkYn9D5Qs45UmJUfAKMSHkVp"
+    "fiDVcMcB7q2oALJ3nJUnbjmfUE8"
+)
 
 
 def test_bip84_receiving_addresses() -> None:
@@ -60,6 +70,64 @@ def test_descriptor_templates() -> None:
     assert nested["change"] == f"sh(wpkh([{fp}/49h/0h/0h]{xpub}/1/*))"
     taproot = build_descriptors(xpub, fp, 86, 0, 0)
     assert taproot["external"] == f"tr([{fp}/86h/0h/0h]{xpub}/0/*)"
+
+
+def test_bisq_legacy_and_segwit_descriptors() -> None:
+    master = bip32.HDKey.from_seed(bytes.fromhex(BIP32_SEED_HEX))
+    assert master.derive("m/44h/0h/0h").to_public().to_base58() == BISQ_LEGACY_XPUB
+    segwit = master.derive("m/44h/0h/1h").to_public()
+    assert segwit.to_base58(version=b"\x04\xb2\x47\x46") == BISQ_SEGWIT_ZPUB
+
+    legacy = build_descriptors(BISQ_LEGACY_XPUB, "", 44, 0, 0, script_type="pkh")
+    assert legacy == {
+        "external": f"pkh({BISQ_LEGACY_XPUB}/0/*)",
+        "change": f"pkh({BISQ_LEGACY_XPUB}/1/*)",
+    }
+
+    # No fingerprint: Bisq Wallet Info does not always show one.
+    segwit = build_descriptors(
+        BISQ_SEGWIT_ZPUB,
+        "",
+        84,
+        0,
+        0,
+        script_type="wpkh",
+        derivation="m/44'/0'/1'",
+    )
+    assert segwit == {
+        "external": f"wpkh({BISQ_SEGWIT_ZPUB}/0/*)",
+        "change": f"wpkh({BISQ_SEGWIT_ZPUB}/1/*)",
+    }
+
+    with_fingerprint = build_descriptors(
+        BISQ_SEGWIT_ZPUB,
+        "aabbccdd",
+        84,
+        0,
+        0,
+        script_type="wpkh",
+        derivation="44h/0h/1h",
+    )
+    assert with_fingerprint["external"] == (f"wpkh([aabbccdd/44h/0h/1h]{BISQ_SEGWIT_ZPUB}/0/*)")
+
+
+def test_script_type_and_derivation_overrides() -> None:
+    explicit = build_descriptors(
+        BIP32_M0H_XPUB,
+        "aabbccdd",
+        44,
+        0,
+        1,
+        script_type="wpkh",
+        derivation="44'/0'/1'",
+    )
+    assert explicit["external"] == (f"wpkh([aabbccdd/44h/0h/1h]{BIP32_M0H_XPUB}/0/*)")
+    nested = build_descriptors(BIP32_M0H_XPUB, "", 84, script_type="sh-wpkh")
+    assert nested["external"] == f"sh(wpkh({BIP32_M0H_XPUB}/0/*))"
+    with pytest.raises(ValueError, match="Unsupported script_type"):
+        build_descriptors(BIP32_M0H_XPUB, "", 84, script_type="wsh")
+    with pytest.raises(ValueError, match="invalid derivation"):
+        build_descriptors(BIP32_M0H_XPUB, "", 84, derivation="m/44x/0")
 
 
 def test_regtest_addresses_use_bcrt_hrp() -> None:

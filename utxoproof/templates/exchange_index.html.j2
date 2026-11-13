@@ -48,9 +48,9 @@
 
 <h2>Accounts</h2>
 <div class="table-wrap"><table>
-  <tr><th>Account</th><th>Exchange</th><th>Trades</th><th>Transfers</th><th>Receipts</th><th>Receipts matched</th><th>Needs review</th><th>Review page</th></tr>
+  <tr><th>Account</th><th>Exchange</th><th>Trades</th><th>Transfers</th><th>Receipts</th><th>Receipts matched</th><th>On-chain</th><th>Needs review</th><th>Review page</th></tr>
   {% for a in accounts %}
-  <tr{% if a.errors %} class="row-unmatched"{% endif %}><td><strong>{{ a.label }}</strong></td><td>{{ a.exchange }}</td><td>{{ a.trades }}</td><td>{{ a.transfers }}</td><td>{{ a.receipts }}</td><td>{{ a.matched_receipts }}</td><td>{% if a.unmatched %}<span class="missing">{{ a.unmatched }}</span>{% else %}0{% endif %}</td><td><a href="{{ a.href }}">Open {{ a.label }} review</a></td></tr>
+  <tr{% if a.errors %} class="row-unmatched"{% endif %}><td><strong>{{ a.label }}</strong></td><td>{{ a.exchange }}</td><td>{{ a.trades }}</td><td>{{ a.transfers }}</td><td>{{ a.receipts }}</td><td>{{ a.matched_receipts }}</td><td>{% if a.wallets %}{{ a.wallets }} wallet{% if a.wallets != 1 %}s{% endif %} · {{ a.onchain_btc }} BTC{% else %}—{% endif %}</td><td>{% if a.unmatched %}<span class="missing">{{ a.unmatched }}</span>{% else %}0{% endif %}</td><td><a href="{{ a.href }}">Open {{ a.label }} review</a></td></tr>
   {% endfor %}
 </table></div>
 

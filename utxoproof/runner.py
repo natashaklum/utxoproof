@@ -108,6 +108,7 @@ def _account_json(account: Account) -> dict[str, Any]:
                 "transactions": [str(path) for path in account.transactions],
                 "receipts": [str(path) for path in account.receipts],
                 "events": [str(path) for path in account.events],
+                "wallet_accounts": list(account.wallet_accounts),
             }
         )
     else:
@@ -642,6 +643,65 @@ def _write_bank_rows(
     return target, rows, specs
 
 
+SAT_PER_BTC = Decimal("100000000")
+
+
+def _exchange_wallet_context(
+    db: sqlite3.Connection,
+    registry: Registry,
+    exchange_account: Account,
+    price: Decimal,
+    reports_dir: Path,
+    exchange_dir: Path,
+) -> tuple[list[dict[str, object]], dict[str, tuple[str, ...]]]:
+    """Balance and txid attribution for an exchange's linked wallet accounts."""
+    wallet_ids = list(exchange_account.wallet_accounts)
+    if not wallet_ids:
+        return [], {}
+    placeholders = ",".join("?" for _ in wallet_ids)
+    balances = {
+        str(account_id): (int(count), int(sat))
+        for account_id, count, sat in db.execute(
+            "SELECT account_id, COUNT(*), COALESCE(SUM(value_sat), 0) FROM tx_outputs "  # noqa: S608 - placeholders only
+            f"WHERE spent_by_txid IS NULL AND is_mine = 1 AND account_id IN ({placeholders}) "
+            "GROUP BY account_id",
+            wallet_ids,
+        ).fetchall()
+    }
+    txids: dict[str, set[str]] = {}
+    for txid, account_id in db.execute(
+        "SELECT txid, account_id FROM tx_outputs "  # noqa: S608 - placeholders only
+        f"WHERE account_id IN ({placeholders}) AND is_mine = 1 "
+        "UNION "
+        "SELECT spent_by_txid AS txid, account_id FROM tx_outputs "
+        f"WHERE spent_by_txid IS NOT NULL AND account_id IN ({placeholders}) "
+        "AND is_mine = 1",
+        [*wallet_ids, *wallet_ids],
+    ).fetchall():
+        if txid and account_id:
+            txids.setdefault(str(txid), set()).add(str(account_id))
+
+    wallets: list[dict[str, object]] = []
+    for wallet_id in wallet_ids:
+        wallet = registry.get(wallet_id)
+        count, sat = balances.get(wallet_id, (0, 0))
+        amount = Decimal(sat) / SAT_PER_BTC
+        wallets.append(
+            {
+                "id": wallet.id,
+                "label": wallet.label,
+                "network": wallet.network,
+                "utxos": count,
+                "btc": f"{amount:.8f}",
+                "eur": f"{amount * price:,.2f}",
+                "href": os.path.relpath(
+                    reports_dir / "entities" / f"{wallet.id}.html", exchange_dir
+                ),
+            }
+        )
+    return wallets, {txid: tuple(sorted(owners)) for txid, owners in txids.items()}
+
+
 def _write_exchange_links(
     result: ExchangeImport,
     bank_matches: list[Any],
@@ -1041,16 +1101,23 @@ def _build_reports(
             if report_year is not None
             else ""
         )
-        for target in write_exchange_pages(
-            [
+        exchange_pages: list[dict[str, object]] = []
+        for account in registry.by_kind("exchange"):
+            wallets, wallet_txids = _exchange_wallet_context(
+                db, registry, account, price, reports_dir, exchange_dir
+            )
+            exchange_pages.append(
                 {
                     "id": account.id,
                     "label": account.label,
                     "exchange": account.exchange,
                     "path": str(account.path),
+                    "wallets": wallets,
+                    "wallet_txids": wallet_txids,
                 }
-                for account in registry.by_kind("exchange")
-            ],
+            )
+        for target in write_exchange_pages(
+            exchange_pages,
             exchange_import.transactions,
             exchange_import.receipts,
             bank_matches,

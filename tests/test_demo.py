@@ -29,9 +29,15 @@ def test_demo_builds_bank_page_and_kbc_entity(tmp_path: Path) -> None:
 
     v8_overview = (out / "v8" / "overview" / "overview.html").read_text(encoding="utf-8")
     assert "synthetic v8 account workflow" in v8_overview
-    assert "Ledger main" in v8_overview and "2.49000000" in v8_overview
+    assert "Ledger main" in v8_overview and "2.53230000" in v8_overview
     ledger = (out / "v8" / "entities" / "ledger-main.html").read_text(encoding="utf-8")
     assert "Cold storage UTXO" in ledger
+    bisq = (out / "v8" / "exchange" / "bisq.html").read_text(encoding="utf-8")
+    assert "Linked on-chain wallets" in bisq
+    assert "0.03000000 BTC" in bisq
+    assert "0.00730000 BTC" in bisq
+    assert "not seen in linked wallet" not in bisq
+    assert (out / "v8" / "entities" / "bisq-wallet-segwit.html").is_file()
     assert (out / "v8" / "bank" / "bank.html").is_file()
     assert (out / "v8" / "2023" / "report.html").is_file()
     index = (out / "index.html").read_text(encoding="utf-8")

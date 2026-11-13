@@ -11,12 +11,29 @@ import re
 
 from embit import bip32, descriptor, networks, script
 
-# purpose -> (Core descriptor function, account derivation prefix)
-TEMPLATES: dict[int, tuple[str, str]] = {
-    44: ("pkh", "44h"),
-    49: ("sh(wpkh({})", "49h"),  # closed below: sh(wpkh(<inner>))
-    84: ("wpkh", "84h"),
-    86: ("tr", "86h"),
+# purpose -> script type used when no explicit override is supplied
+PURPOSE_SCRIPT_TYPES: dict[int, str] = {
+    44: "pkh",
+    49: "sh-wpkh",
+    84: "wpkh",
+    86: "tr",
+}
+SCRIPT_TYPE_ALIASES: dict[str, str] = {
+    "pkh": "pkh",
+    "legacy": "pkh",
+    "p2pkh": "pkh",
+    "sh-wpkh": "sh-wpkh",
+    "shwpkh": "sh-wpkh",
+    "p2sh-wpkh": "sh-wpkh",
+    "p2sh-p2wpkh": "sh-wpkh",
+    "nested-segwit": "sh-wpkh",
+    "wpkh": "wpkh",
+    "segwit": "wpkh",
+    "bech32": "wpkh",
+    "p2wpkh": "wpkh",
+    "tr": "tr",
+    "taproot": "tr",
+    "p2tr": "tr",
 }
 
 NETWORKS = ("main", "test", "regtest")
@@ -39,37 +56,92 @@ def validate_account_xpub(xpub: str) -> bip32.HDKey:
         raise ValueError(f"Invalid account xpub: {exc}") from exc
 
 
+def normalize_script_type(value: str) -> str:
+    """Normalize user-facing script type names to pkh/sh-wpkh/wpkh/tr."""
+    key = value.strip().lower().replace("_", "-")
+    script_type = SCRIPT_TYPE_ALIASES.get(key)
+    if script_type is None:
+        script_type = SCRIPT_TYPE_ALIASES.get(key.replace("-", ""))
+    if script_type is None:
+        raise ValueError(f"Unsupported script_type {value!r}; expected pkh, sh-wpkh, wpkh or tr")
+    return script_type
+
+
+def normalize_derivation(value: str) -> str:
+    """Normalize ``m/44'/0'/1'`` to the descriptor origin form ``44h/0h/1h``."""
+    raw = value.strip()
+    if raw.startswith("m/"):
+        raw = raw[2:]
+    if not raw:
+        raise ValueError("derivation must not be empty")
+    parts: list[str] = []
+    for part in raw.split("/"):
+        if not part:
+            raise ValueError(f"invalid derivation path {value!r}")
+        hardened = part[-1] in "'hH"
+        number = part[:-1] if hardened else part
+        if not number.isdigit():
+            raise ValueError(f"invalid derivation path {value!r}")
+        parts.append(f"{int(number)}h" if hardened else str(int(number)))
+    return "/".join(parts)
+
+
 def build_descriptors(
     xpub: str,
-    fingerprint_hex: str,
+    fingerprint_hex: str = "",
     purpose: int = 84,
     coin: int = 0,
     account: int = 0,
+    *,
+    script_type: str = "",
+    derivation: str = "",
 ) -> dict[str, str]:
     """Build Core external/change descriptors for an account xpub.
 
     Returns ``{"external": ..., "change": ...}`` e.g.
     ``wpkh([aabbccdd/84h/0h/0h]xpub.../0/*)``. ``fingerprint_hex`` is the
-    master fingerprint (8 hex chars, from the hardware wallet).
-    """
-    if purpose not in TEMPLATES:
-        raise ValueError(f"Unsupported purpose {purpose}; expected one of {sorted(TEMPLATES)}")
-    if len(fingerprint_hex) != 8:
-        raise ValueError("fingerprint_hex must be 8 hex chars (master fingerprint)")
-    try:
-        bytes.fromhex(fingerprint_hex)
-    except ValueError as exc:
-        raise ValueError("fingerprint_hex must be 8 hex chars (master fingerprint)") from exc
-    validate_account_xpub(xpub)
+    master fingerprint (8 hex chars); it may be empty when the source (for
+    example Bisq Wallet Info) does not expose one, in which case the descriptor
+    origin is omitted.
 
-    func, purpose_h = TEMPLATES[purpose]
-    origin = f"[{fingerprint_hex}/{purpose_h}/{coin}h/{account}h]"
-    if purpose == 49:
+    ``script_type`` overrides the purpose-derived address type and
+    ``derivation`` overrides the origin path. This is what makes Bisq's
+    nonstandard segwit keychain expressible: a ``zpub`` at ``m/44'/0'/1'`` is
+    native segwit even though its purpose is 44.
+    """
+    validate_account_xpub(xpub)
+    if script_type:
+        script = normalize_script_type(script_type)
+    else:
+        script = PURPOSE_SCRIPT_TYPES.get(purpose, "")
+        if not script:
+            raise ValueError(
+                f"Unsupported purpose {purpose}; expected one of "
+                f"{sorted(PURPOSE_SCRIPT_TYPES)} or an explicit script_type"
+            )
+    if purpose < 0 or coin < 0 or account < 0:
+        raise ValueError("purpose, coin and account must be >= 0")
+    if derivation:
+        origin_path = normalize_derivation(derivation)
+    else:
+        origin_path = f"{purpose}h/{coin}h/{account}h"
+    origin = ""
+    if fingerprint_hex:
+        if len(fingerprint_hex) != 8:
+            raise ValueError("fingerprint_hex must be 8 hex chars (master fingerprint)")
+        try:
+            bytes.fromhex(fingerprint_hex)
+        except ValueError as exc:
+            raise ValueError("fingerprint_hex must be 8 hex chars (master fingerprint)") from exc
+        origin = f"[{fingerprint_hex}/{origin_path}]"
+
+    if script == "sh-wpkh":
         inner = f"wpkh({origin}{xpub}/{{chain}}/*)"
         return {
             "external": f"sh({inner.format(chain=0)})",
             "change": f"sh({inner.format(chain=1)})",
         }
+    func = {"pkh": "pkh", "wpkh": "wpkh", "tr": "tr"}[script]
     return {
         "external": f"{func}({origin}{xpub}/0/*)",
         "change": f"{func}({origin}{xpub}/1/*)",

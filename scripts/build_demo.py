@@ -96,6 +96,9 @@ def _seed_v8_chain(db: sqlite3.Connection, registry: Registry) -> None:
         ("2" * 64, 700_000, "2022-02-02T12:00:00+00:00"),
         ("3" * 64, 720_000, "2022-09-09T12:00:00+00:00"),
         ("4" * 64, 760_000, "2023-03-04T12:00:00+00:00"),
+        ("a1" * 32, 630_000, "2020-05-01T09:00:00+00:00"),
+        ("b1" * 32, 790_000, "2023-02-27T10:30:00+00:00"),
+        ("b2" * 32, 795_000, "2023-03-03T15:00:00+00:00"),
     ]
     db.executemany(
         "INSERT INTO transactions (txid,block_height,block_time,is_coinbase) VALUES (?,?,?,0)",
@@ -134,6 +137,24 @@ def _seed_v8_chain(db: sqlite3.Connection, registry: Registry) -> None:
     output("2" * 64, 0, "sparrow-savings", 0, 0, 75_000_000, "exchange_purchase")
     output("3" * 64, 0, "multisig-vault", 0, 0, 100_000_000, "exchange_purchase")
     output("4" * 64, 0, "sparrow-savings", 1, 0, 24_000_000, None)
+    output("a1" * 32, 0, "bisq-wallet-legacy", 0, 0, 3_000_000, "p2p_purchase")
+    output("b1" * 32, 0, "bisq-wallet-segwit", 0, 0, 1_234_000, "p2p_purchase")
+    output("b2" * 32, 1, "bisq-wallet-segwit", 1, 0, 730_000, None)
+    db.execute(
+        "INSERT INTO tx_outputs "
+        "(txid,vout,address,value_sat,script_hex,is_mine,account_id) VALUES (?,?,?,?,?,0,NULL)",
+        (
+            "b2" * 32,
+            0,
+            "bc1qpux3z758ulsxg69eptaakukraanqwtdxe5yy4c",
+            500_000,
+            "",
+        ),
+    )
+    db.execute(
+        "INSERT INTO tx_inputs (txid,input_index,prev_txid,prev_vout) VALUES (?,?,?,?)",
+        ("b2" * 32, 0, "b1" * 32, 0),
+    )
     db.execute(
         "INSERT INTO tx_outputs "
         "(txid,vout,address,value_sat,script_hex,is_mine,account_id) VALUES (?,?,?,?,?,0,NULL)",
@@ -206,6 +227,8 @@ def _build_v8_demo(out: Path) -> list[tuple[str, str]]:
         ("v8 bank review", "v8/bank/bank.html"),
         ("v8 exchange review", "v8/exchange/index.html"),
         ("v8 Bisq trades + SEPA receipts", "v8/exchange/bisq.html"),
+        ("v8 Bisq legacy wallet", "v8/entities/bisq-wallet-legacy.html"),
+        ("v8 Bisq segwit wallet", "v8/entities/bisq-wallet-segwit.html"),
         ("v8 manual old-exchange events", "v8/exchange/old-exchange.html"),
         ("v8 tax report 2023", "v8/2023/report.html"),
     ]

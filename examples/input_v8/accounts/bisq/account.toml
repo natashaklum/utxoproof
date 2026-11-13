@@ -4,4 +4,5 @@ exchange = "bisq"
 trade_history = "tradeHistory.csv"
 transactions = "transactions.csv"
 receipts = "receipts/*.pdf"
+wallet_accounts = ["bisq-wallet-legacy", "bisq-wallet-segwit"]
 tags = ["exchange", "non-kyc"]
