@@ -402,7 +402,7 @@ electrum_url = "ssl://127.0.0.1:50002"
 electrum_ca_file = ""          <span class="c"># path to your server's CA, if private</span></pre>
           <div class="callout">
             <span class="label">First sync, old wallet</span>
-            <p>The importer batches scripthash histories and extends the gap limit as activity reaches the edge. If the first sync misses history, or you changed descriptors, rerun with <code>--force-rescan</code>. It clears and rebuilds the local chain tables; it does not touch your source files.</p>
+            <p>The importer batches scripthash histories and extends the gap limit as activity reaches the edge. Exchange wallets that used many addresses (Bisq in particular) need <code>gap_limit = 500</code>-<code>1000</code>; a small starting gap can miss a sparsely used tail. If the first sync misses history, or you changed descriptors, rerun with <code>--force-rescan</code>. It clears and rebuilds the local chain tables; it does not touch your source files.</p>
           </div>
 
           <h3>BIP329 labels</h3>
@@ -468,10 +468,11 @@ transactions = "transactions.csv"
 receipts = "receipts/*.pdf"</pre>
           <p>SEPA receipt PDFs are matched to trades and bank rows by filename (date, BTC amount, EUR/BTC price, market). The PDF stays evidence; no text extraction is attempted. Every trade, transfer and receipt appears on the exchange review page, with the bank row and chain transaction it links to. Unmatched items are red and listed in a review panel — never guessed.</p>
           <h4>Track the Bisq on-chain wallet too</h4>
-          <p>Trade and transfer CSVs do not prove what the Bisq wallet still holds, which change is yours, or where a withdrawal went. In Bisq, open <strong>Account → Wallet Info</strong> and copy the two BTC watch keys and keychain paths. Add them as two separate <code>wallet</code> accounts, then name both in the exchange manifest. Legacy is <code>m/44'/0'/0'</code> with <code>script_type = "pkh"</code>; segwit is <code>m/44'/0'/1'</code> with <code>script_type = "wpkh"</code> and an explicit <code>derivation</code>. Bisq may not show a master fingerprint, so the shorthand accepts an omitted fingerprint. The BSQ keychain is not Bitcoin.</p>
+          <p>Trade and transfer CSVs do not prove what the Bisq wallet still holds, which change is yours, or where a withdrawal went. In Bisq, open <strong>Account → Wallet Info</strong> and copy the two BTC watch keys and keychain paths. Add them as two separate <code>wallet</code> accounts, then name both in the exchange manifest. Legacy is <code>m/44'/0'/0'</code> with <code>script_type = "pkh"</code>; segwit is <code>m/44'/0'/1'</code> with <code>script_type = "wpkh"</code> and an explicit <code>derivation</code>. Bisq may not show a master fingerprint, so the shorthand accepts an omitted fingerprint. The BSQ keychain is not Bitcoin. Bisq wallets can use hundreds of addresses, so set <code>gap_limit = 500</code> (1000 for a very old wallet) instead of the hardware-wallet default; if history is missing, raise it and rerun with <code>--force-rescan</code>.</p>
           <pre><span class="c"># accounts/bisq-wallet-legacy/account.toml</span>
 kind = "wallet"
 label = "Bisq BTC legacy"
+gap_limit = 500
 xpub = "xpub..."
 purpose = 44
 script_type = "pkh"
@@ -479,6 +480,7 @@ script_type = "pkh"
 <span class="c"># accounts/bisq-wallet-segwit/account.toml</span>
 kind = "wallet"
 label = "Bisq BTC segwit"
+gap_limit = 500
 xpub = "zpub..."
 script_type = "wpkh"
 derivation = "m/44'/0'/1'"
@@ -787,7 +789,7 @@ date,kind,btc,eur_per_btc,fee_eur,refid,note,evidence,txid,address,kyc_status
                 <tr><td><code>no statement CSV files matched</code></td><td>The bank/card folder has no CSV under the pattern.</td><td>Add statements or set <code>statements</code> explicitly; a bank folder without statements is invalid.</td></tr>
                 <tr><td><code>wallet needs descriptors or xpub</code></td><td>No ownership source in the wallet manifest.</td><td>Export a watch-only descriptor, or add <code>xpub</code> + <code>purpose</code> (fingerprint optional).</td></tr>
                 <tr><td><code>derive the same script</code></td><td>The same wallet is in two account folders.</td><td>Remove the duplicate. One output can have only one owner.</td></tr>
-                <tr><td>Zero UTXOs after sync</td><td>Wrong network, wrong descriptor, server not reachable, or history missed.</td><td>Run <code>discover --online</code>, check <code>network</code>, then <code>run --force-rescan</code>.</td></tr>
+                <tr><td>Zero UTXOs after sync</td><td>Wrong network, wrong descriptor, server not reachable, history missed, or too small a gap for a heavily used exchange wallet.</td><td>Run <code>discover --online</code>, check <code>network</code> and <code>gap_limit</code> (500-1000 for Bisq), then <code>run --force-rescan</code>.</td></tr>
                 <tr><td>Reconcile shows a gap</td><td>Stale DB, missed spend, wrong server, or descriptor mismatch.</td><td>Rerun sync, then <code>--force-rescan</code>; inspect the account descriptor and server network.</td></tr>
                 <tr><td>Labels do not appear</td><td>Wrong file name, unsupported type, or account not imported.</td><td>Use <code>labels.jsonl</code> or set <code>labels_file</code>; remember labels are display only.</td></tr>
                 <tr><td>Bank rows do not change tax</td><td>By design: bank rows are evidence, not pool input.</td><td>Use exchange trades or a manual CSV for cost-basis flows.</td></tr>

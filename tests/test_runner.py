@@ -122,7 +122,7 @@ def test_offline_run_builds_account_site(tmp_path: Path) -> None:
     db.close()
     assert accounts == 11
     assert labels == 4
-    assert scripts == 200  # 5 wallets x 2 chains x 20 gap
+    assert scripts == 2120  # 3 wallets x 2 chains x 20 + 2 Bisq wallets x 2 chains x 500
     after = {
         path.relative_to(EXAMPLE): path.read_bytes()
         for path in EXAMPLE.rglob("*")

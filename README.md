@@ -117,7 +117,8 @@ skips the bundle). Exchange accounts (`kraken`, `bisq`, `manual`) also get
 transactions; unresolved items stay red instead of being guessed. A Bisq
 account can name `wallet_accounts` for its legacy and segwit watch-only
 keychains, so the review page shows the real on-chain balance and recognises
-transfer txids. `examples/run.sh` is a thin environment-variable wrapper around
+transfer txids. Bisq wallets use many addresses, so give them
+`gap_limit = 500`-`1000` rather than a hardware-wallet gap. `examples/run.sh` is a thin environment-variable wrapper around
 it.
 
 Offline CSV checks still work without an input tree:

@@ -266,6 +266,22 @@ wallet's balance and marks transfer txids that were actually seen in that
 wallet. The BSQ keychain (`m/44'/142'/0'`) is not Bitcoin and must not be added
 as a BTC wallet.
 
+Bisq wallets can use hundreds of addresses, and old wallets may have sparsely
+used ranges. Set `gap_limit = 500` (1000 for a very old or heavily used wallet)
+on both wallet accounts; the hardware-wallet defaults (20-200) mean many
+extension rounds, and a range beyond the gap would be missed silently. Sync
+extends the gap when activity reaches its edge, but the starting value is what
+catches a sparse tail. If the on-chain balance or transfer history looks
+incomplete, raise `gap_limit` and rerun with `--force-rescan`:
+
+```toml
+# both Bisq wallet manifests
+gap_limit = 500
+```
+
+The exchange review shows each linked wallet's effective gap and warns when it
+is still below 500 after sync.
+
 A manual exchange uses `events.csv` with `date,kind` (`BUY`, `SELL`, `DEPOSIT`,
 `WITHDRAWAL`) and optional `btc,eur_per_btc,fee_eur,refid,note,evidence,txid,
 address,kyc_status`. `evidence` is a semicolon-separated list of files relative

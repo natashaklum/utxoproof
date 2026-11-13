@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from utxoproof.reports import build_report, render_report, write_report
+from utxoproof.reports import build_report, render_report, write_exchange_pages, write_report
 
 FIXTURE = Path(__file__).parent / "fixtures" / "manual_2023.csv"
 KRAKEN = Path(__file__).parent / "fixtures" / "kraken_ledgers_2023.csv"
@@ -18,6 +18,42 @@ def test_report_totals_match_compute() -> None:
     assert report.total_eur == report.tax_eur + report.communal_eur
     assert len(report.disposals) == 5
     assert sum((d.gain_eur for d in report.disposals), Decimal("0")) == report.gain_eur
+
+
+def test_exchange_page_warns_when_linked_wallet_gap_is_small(tmp_path: Path) -> None:
+    wallets = [
+        {
+            "id": "bisq-wallet-legacy",
+            "label": "Bisq BTC legacy",
+            "network": "mainnet",
+            "utxos": 1,
+            "gap_limit": 20,
+            "btc": "0.01000000",
+            "eur": "250.00",
+            "href": "../entities/bisq-wallet-legacy.html",
+        }
+    ]
+    write_exchange_pages(
+        [
+            {
+                "id": "bisq",
+                "label": "Bisq",
+                "exchange": "bisq",
+                "path": "",
+                "wallets": wallets,
+                "wallet_txids": {},
+            }
+        ],
+        [],
+        [],
+        [],
+        [],
+        tmp_path,
+    )
+    html = (tmp_path / "bisq.html").read_text(encoding="utf-8")
+    assert "gap 20" in html
+    assert "scans with gap limit 20" in html
+    assert "gap_limit = 500" in html
 
 
 def test_report_html_contains_figures(tmp_path: Path) -> None:

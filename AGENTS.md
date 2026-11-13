@@ -59,7 +59,9 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   exchange manifest; the exchange page then shows each linked wallet's balance
   and recognises transfer txids. Bisq's integrated BTC wallet is two wallet
   accounts (legacy `pkh` at `44'/0'/0'`, segwit `wpkh` at `44'/0'/1'`) because
-  each is its own descriptor set. The BSQ keychain (`44'/142'/0'`) is not BTC.
+  each is its own descriptor set. Bisq wallets need a large `gap_limit`
+  (500-1000); small hardware-wallet gaps can miss a sparse address tail. The
+  BSQ keychain (`44'/142'/0'`) is not BTC.
 - Manifests/config use `utxoproof/toml_utils.py`: valid comments, unknown keys
   and lists parse normally; stray invalid lines are skipped instead of
   aborting. The console gets one `WARNING` per file pointing at

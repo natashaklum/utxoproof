@@ -692,6 +692,7 @@ def _exchange_wallet_context(
                 "label": wallet.label,
                 "network": wallet.network,
                 "utxos": count,
+                "gap_limit": wallet.gap_limit,
                 "btc": f"{amount:.8f}",
                 "eur": f"{amount * price:,.2f}",
                 "href": os.path.relpath(

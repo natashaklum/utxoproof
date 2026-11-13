@@ -64,10 +64,18 @@
   <div class="metric">
     <span class="metric-label">{{ w.label }}</span>
     <strong class="metric-value">{{ w.btc }} BTC</strong>
-    <span class="metric-note">{{ w.eur }} EUR · {{ w.utxos }} UTXO{% if w.utxos != 1 %}s{% endif %} · {{ w.network }} · <a href="{{ w.href }}">open account</a></span>
+    <span class="metric-note">{{ w.eur }} EUR · {{ w.utxos }} UTXO{% if w.utxos != 1 %}s{% endif %} · {{ w.network }} · gap {{ w.gap_limit }} · <a href="{{ w.href }}">open account</a></span>
   </div>
   {% endfor %}
 </div>
+{% for w in wallets %}
+{% if w.gap_limit < 500 %}
+<div class="alert alert-warn">
+  <h3>{{ w.label }} scans with gap limit {{ w.gap_limit }}</h3>
+  <p>Exchange wallets (Bisq in particular) often use hundreds of addresses, and sparsely used ranges can sit beyond a small gap. If the balance or transfer history looks incomplete, set <code>gap_limit = 500</code> (or 1000) in that wallet manifest and rerun with <code>--force-rescan</code>.</p>
+</div>
+{% endif %}
+{% endfor %}
 {% if not onchain_utxos %}
 <div class="alert alert-warn">
   <h3>No on-chain UTXOs found for the linked wallet(s) yet</h3>

@@ -36,6 +36,8 @@ def test_demo_builds_bank_page_and_kbc_entity(tmp_path: Path) -> None:
     assert "Linked on-chain wallets" in bisq
     assert "0.03000000 BTC" in bisq
     assert "0.00730000 BTC" in bisq
+    assert "gap 500" in bisq
+    assert "scans with gap limit" not in bisq
     assert "not seen in linked wallet" not in bisq
     assert (out / "v8" / "entities" / "bisq-wallet-segwit.html").is_file()
     assert (out / "v8" / "bank" / "bank.html").is_file()
